@@ -1,175 +1,291 @@
-# Chakra RAG — Pipeline RAG nhỏ với Agentic Retrieval
+# Chakra RAG
 
-Bài làm cho đề test AI Engineer (Chitta Group): xây dựng pipeline RAG nhỏ — chia nhỏ tài liệu, tạo embeddings, truy xuất, trả lời câu hỏi kèm trích dẫn nguồn, và đánh giá chất lượng.
+Bài làm take-home **AI Engineer — Chitta Group** (Bộ phận Công nghệ & Dữ liệu).
 
-## Điểm chính của bài làm
+Pipeline RAG nhỏ: chia tài liệu → embedding → truy xuất → trả lời 3–5 câu hỏi kèm trích dẫn nguồn → đánh giá chất lượng đơn giản.
 
-- **Agentic RAG**: LLM không được nhét sẵn context — nó **tự gọi tool `search_docs`** (function calling qua LangGraph) để tra cứu, có thể tìm nhiều lượt rồi mới trả lời. UI hiển thị search trace để xem agent đã tìm gì.
-- **Hybrid retrieval**: vector (sqlite-vec) + lexical (SQLite FTS5), fusion bằng Reciprocal Rank Fusion.
-- **Grounding có hậu kiểm**: mọi citation `[chunk_id]` được verify độc lập với LLM — cite phải nằm trong tập chunk tool *thực sự* trả về, và claim phải được chunk đỡ (support check).
-- **Đánh giá bằng số liệu**: golden set 8 câu (factoid, multi-hop, unanswerable), đo Recall@k, MRR, token-F1, citation precision, refusal accuracy; kèm ablation `agent` vs `stuff`.
-- **UI Vite + React + TS**: upload file, xem tiến trình embedding %, chấm xanh khi sẵn sàng, citation chip bấm xem nguồn gốc.
+> **Phạm vi theo đề:** UI / Cloud / dữ liệu lớn **không bắt buộc**. Phần demo chính là **CLI + eval**. UI (Vite/React) là phần bổ sung, có thể bỏ qua khi chấm.
 
-## Chạy nhanh
+---
 
-Yêu cầu: Python 3.11+, Node 18+, một LLM API key (OpenAI / OpenRouter / Ollama local).
+## 1. Đề bài đã làm gì
+
+| Yêu cầu đề | Cách đáp ứng trong repo |
+|---|---|
+| Chia nhỏ tài liệu | Heading + paragraph chunking (~300 token, overlap 50), giữ metadata nguồn |
+| Tạo embeddings | `paraphrase-multilingual-MiniLM-L12-v2` (local, 384d, L2-normalize) |
+| Truy xuất | Hybrid: vector (`sqlite-vec`) + lexical (FTS5) → Reciprocal Rank Fusion |
+| Trả lời + trích dẫn | Agent gọi tool `search_docs` (LangGraph) hoặc mode `stuff`; mỗi claim kèm `[chunk_id]` |
+| Hạn chế hallucination | Retrieval gate + prompt ràng buộc + citation verifier độc lập LLM |
+| Đánh giá đơn giản | Golden set 8 câu + `scripts/run_eval.py` (Recall@k, MRR, token-F1, citation precision, refusal) |
+| Mã chạy được + hướng dẫn | README này + CLI `ingest` / `ask` / `files` |
+
+---
+
+## 2. Yêu cầu môi trường
+
+- **Python 3.11+** (khuyến nghị **3.12**; tránh 3.14 — torch/sentence-transformers có thể lỗi)
+- **uv** (khuyến nghị) hoặc `pip` + `venv`
+- Một **LLM API key** OpenAI-compatible (OpenAI / OpenRouter / Ollama local…)
+- Model chạy mode `agent` cần **hỗ trợ function calling** (vd. `gpt-4o-mini`, Qwen tool-call). Không có thì dùng `--mode stuff`
+- *(Tuỳ chọn UI)* Node.js 18+
+
+---
+
+## 3. Cài đặt & chạy nhanh (CLI — đường demo chính)
 
 ```bash
-# 1. Backend
-uv venv --python 3.12 .venv            # hoặc python -m venv .venv
-uv pip install -r requirements.txt     # hoặc pip install -r requirements.txt
-cp .env.example .env                   # điền LLM_API_KEY / LLM_MODEL / LLM_BASE_URL
+# Clone / vào thư mục project
+cd chakra_rag
 
-PYTHONPATH=src .venv/bin/python -m chakra_rag ingest   # ingest corpus seed
-PYTHONPATH=src .venv/bin/python -m chakra_rag ask "Mức hoàn phí đào tạo tối đa là bao nhiêu?"
+# 1) Tạo môi trường + cài dependency
+uv venv --python 3.12 .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+uv pip install -r requirements.txt
+# hoặc: python -m venv .venv && pip install -r requirements.txt
 
-# 2. API
-PYTHONPATH=src .venv/bin/uvicorn chakra_rag.interfaces.api:app --reload --port 8000
+# 2) Cấu hình LLM
+cp .env.example .env
+# Sửa .env: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
 
-# 3. UI (tùy chọn)
-cd ui && npm install && npm run dev    # http://localhost:5173
+# 3) Ingest corpus mẫu (4 policy trong data/docs/)
+PYTHONPATH=src python -m chakra_rag ingest
 
-# 4. Đánh giá
-PYTHONPATH=src .venv/bin/python scripts/run_eval.py            # ablation agent vs stuff
-PYTHONPATH=src .venv/bin/python scripts/run_eval.py --judge    # thêm LLM-judge
+# 4) Hỏi thử (có trích dẫn nguồn)
+PYTHONPATH=src python -m chakra_rag ask "Mức hoàn phí đào tạo tối đa là bao nhiêu?"
+PYTHONPATH=src python -m chakra_rag ask "Một PR cần bao nhiêu approval trước khi merge?"
+PYTHONPATH=src python -m chakra_rag ask "Công ty có hỗ trợ mua laptop cá nhân không?"   # unanswerable
 
-# 5. Tests
-.venv/bin/python -m pytest tests/ -v
+# Mode không cần tool-calling (fallback / ablation)
+PYTHONPATH=src python -m chakra_rag ask "..." --mode stuff
+
+# Xem file đã index
+PYTHONPATH=src python -m chakra_rag files
 ```
 
-Cấu hình LLM qua `.env` (xem `.env.example`): OpenAI (`https://api.openai.com/v1`), OpenRouter (`https://openrouter.ai/api/v1`), hoặc Ollama local (`http://localhost:11434/v1`). Model cần hỗ trợ function calling cho mode `agent` (GPT-4o-mini, Qwen, Claude…); model local nhỏ không hỗ trợ tốt thì dùng `--mode stuff`.
+### Cấu hình `.env` (rút gọn)
 
-**Model "thinking"** (DeepSeek-R1/V4, Qwen3…): các model này trả thêm trường `reasoning_content` và đòi hỏi nó được gửi lại ở lượt sau quanh tool-call — `ChatOpenAI` chuẩn của LangChain không làm việc này nên provider trả 400. Dự án dùng subclass `ThinkingChatOpenAI` (`src/chakra_rag/core/llm.py`) để giữ và gửi lại trường đó, nên **không cần tắt thinking mode** — cứ cấu hình endpoint OpenAI-compatible bình thường. Nội dung suy luận cũng được hiển thị trong UI.
+```env
+# OpenAI
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=sk-...
+LLM_MODEL=gpt-4o-mini
 
-## Kiến trúc
+# OpenRouter
+# LLM_BASE_URL=https://openrouter.ai/api/v1
+# LLM_MODEL=<model-id>
 
-```
-data/docs/*.md ─┐
-upload (.md/.txt) ─┤→ chunking (heading + paragraph, ~300 token, overlap 50)
-                │→ embedding (multilingual MiniLM 384d, local)
-                │→ SQLite: chunks + vec0 (sqlite-vec) + FTS5 + files
-                │   (ingest worker nền, cập nhật tiến trình từng batch)
-                ▼
-question → agent loop (LangGraph create_react_agent, max 4 lượt)
-             │ tool_call search_docs(query, top_k)
-             ▼
-         hybrid retrieval: vector top-k + FTS5 top-k → RRF fusion → threshold
-             │ chunks [{chunk_id, score, text, nguồn}] → message role="tool"
-             ▼
-         LLM chốt câu trả lời kèm [chunk_id] mỗi claim
-             ▼
-         citation verifier (độc lập với LLM):
-           1. cite phải nằm trong tập tool thực sự trả về
-           2. claim phải được chunk đỡ (n-gram support ≥ ngưỡng)
-             ▼
-         {answer, citations[], search_trace[], low_confidence, unsupported_claims[]}
+# Ollama local
+# LLM_BASE_URL=http://localhost:11434/v1
+# LLM_API_KEY=ollama
+# LLM_MODEL=qwen2.5:7b
+
+EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+DB_PATH=data/chakra.db
+DOCS_DIR=data/docs
+MIN_SCORE=0.25
+TOP_K=5
+MAX_AGENT_TURNS=4
 ```
 
-### Cấu trúc code
+Lần đầu chạy embedding model sẽ **tải về máy** (cần mạng). DB nằm tại `data/chakra.db` (một file SQLite).
 
-Backend tổ chức theo tầng, dependency một chiều từ ngoài vào trong:
+---
 
-```
-src/chakra_rag/
-├── config.py                  # dataclass Config, đọc .env — mọi module nhận config qua đây
-├── core/                      # nghiệp vụ lõi, không phụ thuộc framework
-│   ├── chunking.py            #   cắt theo heading + paragraph, giữ metadata nguồn
-│   ├── embedding.py           #   sentence-transformers, lazy-load, chuẩn hóa L2
-│   ├── retrieval.py           #   hybrid vector+FTS5, RRF fusion, threshold gate
-│   ├── llm.py                 #   ThinkingChatOpenAI: giữ & gửi lại reasoning_content
-│   ├── agent.py               #   LangGraph create_react_agent + fallback stuff-context
-│   └── verification.py        #   citation verification (existence + support check)
-├── storage/
-│   └── store.py               # SQLite: chunks + vec0 + FTS5 + files (1 file DB duy nhất)
-├── ingestion/
-│   └── worker.py              # worker nền 1 thread, state machine, tiến trình từng batch
-├── observability/
-│   └── telemetry.py           # logs JSONL tự thu (thay LangSmith)
-├── service/
-│   └── rag_service.py         # composition root: RagService.ask() ghép các tầng
-└── interfaces/                # các lối vào, không chứa nghiệp vụ
-    ├── api.py                 #   FastAPI: /files /ingest/progress /ask /chunks/{id}
-    └── cli.py                 #   ingest / ask / files
+## 4. Đánh giá chất lượng
 
-scripts/run_eval.py   # đánh giá trên golden set + ablation
-eval/golden.json      # 8 câu: factoid, multi-hop, unanswerable
-tests/test_smoke.py   # 10 test cho phần nghiệp vụ tự viết, không cần LLM
+```bash
+# Cần đã ingest data/docs (golden set trỏ vào 4 file seed đó)
+PYTHONPATH=src python scripts/run_eval.py
+PYTHONPATH=src python scripts/run_eval.py --judge   # thêm LLM-judge (tốn token hơn)
 ```
 
-Frontend tổ chức theo feature, giao diện kiểu ChatGPT (sidebar tài liệu + khung chat + drawer nguồn):
+**Golden set** (`eval/golden.json`): 8 câu tự soạn
 
-```
-ui/src/
-├── main.tsx                       # entry point
-├── app/
-│   ├── App.tsx                    # layout: sidebar | chat | source drawer
-│   └── styles.css
-├── api/
-│   ├── client.ts                  # mọi fetch gọi backend (qua dev proxy /api)
-│   └── types.ts                   # type TS khớp response schema của API
-├── hooks/
-│   └── useIngestStatus.ts         # poll danh sách file + tiến trình embedding
-└── components/
-    ├── sidebar/Sidebar.tsx        # upload + danh sách file + trạng thái index (chấm xanh)
-    ├── chat/Composer.tsx          # ô nhập kiểu ChatGPT
-    ├── chat/ChatMessage.tsx       # user bubble + reasoning + tool steps + answer + nguồn
-    ├── chat/ToolCallStep.tsx      # hiển thị từng lượt gọi search_docs
-    └── sources/SourceDrawer.tsx   # drawer trượt: đoạn tài liệu gốc khi click citation
-```
+- 5 factoid (1 đoạn đủ)
+- 1 multi-hop (ghép ≥2 chunk)
+- 2 unanswerable (không có trong tài liệu → kỳ vọng từ chối)
 
-Nguyên tắc cấu trúc: mỗi module một trách nhiệm; `interfaces` chỉ gọi `service`, `service` ghép `core`/`storage`/`ingestion`/`observability`; config tập trung; phần nghiệp vụ chấm điểm (retrieval, verification) là code tự viết có test riêng. FE: mọi API call đi qua `api/client.ts`, component không fetch trực tiếp.
-
-## Quyết định thiết kế chính
-
-**sqlite-vec + FTS5 trong một file SQLite.** Corpus vài chục chunk thì brute-force KNN là lựa chọn đúng, không cần ANN. Vector + metadata + lexical cùng một DB nên join ra citation gọn, transactional, không hạ tầng. Vector chuẩn hóa L2 trước khi lưu → khoảng cách L2 tương đương cosine.
-
-**Hybrid retrieval + RRF.** Vector bắt nghĩa tốt nhưng trượt từ khóa chính xác (con số, tên riêng — "5.000.000 đồng"); FTS5 bù đúng chỗ đó. RRF chỉ cần thứ hạng, không cần chuẩn hóa score giữa cosine và BM25.
-
-**Agent loop thay vì stuff-context.** LLM tự reformulate query, tìm nhiều lượt, ghép thông tin từ nhiều chunk — lợi thế rõ với câu multi-hop. Đổi lại: 2–4 LLM call mỗi câu. Vì vậy giữ mode `stuff` làm fallback và để ablation — số liệu trả lời câu hỏi "agent có đáng chi phí không", không phải cảm tính.
-
-**Dùng LangChain + LangGraph, không dùng LangSmith.** `create_react_agent` thay vòng lặp tool-calling tự viết; `@tool` sinh schema tự động. Nhưng retrieval, RRF, citation verifier, eval là code tự viết — phần thể hiện năng lực. LangSmith (SaaS tracing) được thay bằng `telemetry.py` log JSONL: offline, tự sở hữu, đủ cho trace và eval.
-
-**Chunk ID thuần ASCII** (`quy_dinh_hoan_phi_dao_tao#muc-hoan-phi-toi-da#0`): LLM phải tái tạo chính xác chunk_id khi trích dẫn; ID có dấu tiếng Việt dễ bị model viết sai ký tự gây mismatch citation.
-
-## Chống hallucination — 4 lớp, mỗi lớp đo được
-
-1. **Retrieval gate**: max score dưới ngưỡng → `low_confidence`, câu trả lời mặc định từ chối một phần/toàn bộ.
-2. **Prompt ràng buộc + temperature 0**: chỉ dùng kết quả tool, mỗi claim kèm `[chunk_id]`, không đủ dữ liệu phải nói rõ.
-3. **Citation verification độc lập với LLM**: cite không nằm trong tập tool thực sự trả về → `invalid_citations`; claim không được chunk đỡ → `unsupported_claims` (bị flag, không âm thầm xóa).
-4. **Faithfulness metric trong eval**: LLM-judge chấm groundedness từng câu trả lời (`--judge`).
-
-**Giới hạn trung thực**: support check bằng n-gram overlap là proxy rẻ tiền, không phải NLI — câu diễn đạt lại bằng từ khác có thể bị flag oan. Hướng nâng cấp: NLI model hoặc LLM-judge từng claim.
-
-**Phát hiện thực tế từ eval**: câu unanswerable có retrieval score 0.42–0.55, chồng lấn với câu trả lời được thấp nhất (0.554) — threshold gate đơn thuần không tách được chúng. Tuyến phòng thủ chính cho câu không trả lời được là hành vi từ chối của LLM qua prompt, còn threshold chỉ là tín hiệu hỗ trợ.
-
-## Đánh giá chất lượng
-
-`eval/golden.json`: 8 câu tự soạn — 5 factoid, 1 multi-hop (ghép 2 chunk), 2 unanswerable (không có trong tài liệu). Gold chunks tham chiếu theo `doc + contains` để resolve ra chunk_id lúc chạy, tránh brittle.
-
-`scripts/run_eval.py` đo:
+**Metric đo:**
 
 | Nhóm | Metric |
 |---|---|
-| Retrieval | Recall@k, MRR trên câu trả lời được |
-| Trả lời | token-F1 so reference; LLM-judge correctness 1–5 (`--judge`) |
-| Grounding | citation precision (% cite trỏ đúng chunk gold); LLM-judge faithfulness |
+| Retrieval | Recall@k, MRR (trên câu trả lời được) |
+| Answer | token-F1 so reference; LLM-judge correctness (`--judge`) |
+| Grounding | citation precision; LLM-judge faithfulness (`--judge`) |
 | Anti-hallucination | refusal accuracy trên câu unanswerable |
-| Agent | số lượt gọi tool trung bình; ablation `agent` vs `stuff` |
+| Agent | số lượt tool trung bình; ablation `agent` vs `stuff` |
 
-Kết quả retrieval hiện tại trên corpus seed: **Recall@5 = 6/6, MRR = 1.000** (mọi câu trả lời được đều hit hạng 1).
+Tham chiếu retrieval trên corpus seed (đã đo): **Recall@5 = 6/6, MRR = 1.0** (mọi câu trả lời được hit hạng 1).
 
-## Giả định
+**Test không cần LLM:**
 
-- Corpus demo tự soạn, tiếng Việt, quy mô vài chục chunk — đủ chứng minh pipeline. Corpus lớn sẽ cần tính lại chunk size, thêm reranker/ANN.
-- LLM qua API OpenAI-compatible; người chấm cần 1 API key hoặc Ollama local.
-- Tài liệu đầu vào dạng `.md`/`.txt` sạch (không xử lý PDF scan, bảng biểu phức tạp).
-- Model chạy mode `agent` phải hỗ trợ function calling; nếu không, dùng mode `stuff`.
+```bash
+PYTHONPATH=src python -m pytest tests/ -v
+```
 
-## Nếu có thêm thời gian
+---
 
-- Reranker cross-encoder (đặc biệt hiệu quả với corpus nhỏ).
-- Support check nâng cấp: NLI model hoặc LLM-judge từng claim thay vì n-gram overlap.
-- Semantic chunking + parent-document retrieval.
-- Agent đa tool: `list_documents`, `read_chunk` bên cạnh `search_docs` — LangGraph mở rộng tự nhiên.
-- Golden set lớn hơn + RAGAS/đánh giá liên tục trong CI.
-- LangSmith nếu làm việc theo team và cần tracing tập trung; hiện tại logs JSONL tự thu là đủ.
+## 5. Ví dụ câu hỏi demo (sau `ingest`)
+
+Corpus seed (`data/docs/`):
+
+1. `quy_dinh_hoan_phi_dao_tao.md`
+2. `chinh_sach_nghi_phep.md`
+3. `quy_dinh_bao_mat_du_lieu.md`
+4. `chuan_code_va_review.md`
+
+Gợi ý 5 câu (đúng tinh thần đề 3–5 câu + trích dẫn):
+
+1. *Mức hoàn phí đào tạo tối đa cho nhân viên làm việc dưới 2 năm là bao nhiêu?*  
+   → kỳ vọng: 5.000.000 đồng / khóa; cite chunk hoàn phí.
+2. *Nhân viên phải gửi đơn xin nghỉ phép trước bao nhiêu ngày làm việc?*  
+   → kỳ vọng: ít nhất 3 ngày làm việc.
+3. *Nhân viên đã làm 3 năm, khóa 7 triệu — được hoàn tối đa bao nhiêu và nộp hồ sơ trong bao lâu?*  
+   → multi-hop: 8.000.000 + 30 ngày.
+4. *Khi rò rỉ dữ liệu mức 3, phải thông báo khách hàng trong bao lâu?*  
+   → 72 giờ.
+5. *Công ty có chính sách hỗ trợ mua laptop cá nhân không?*  
+   → unanswerable: từ chối / nói không có trong tài liệu.
+
+Mỗi câu trả lời in kèm **Nguồn** dạng `[chunk_id] doc — section`. Có thể thêm `--json` để xem full payload (citations, search_trace, low_confidence, unsupported_claims).
+
+---
+
+## 6. Chống hallucination (4 lớp)
+
+1. **Retrieval gate** — điểm vector cao nhất &lt; `MIN_SCORE` (mặc định 0.25) → `low_confidence`; hệ thống ưu tiên từ chối hơn bịa.
+2. **Prompt ràng buộc + temperature 0** — chỉ dùng kết quả tool; mỗi claim phải có `[chunk_id]`; thiếu dữ liệu phải nói rõ.
+3. **Citation verifier (code, không tin LLM)**  
+   - cite phải nằm trong tập chunk tool *thực sự* trả về trong phiên  
+   - claim phải được chunk đỡ (n-gram support)  
+   - cite sai / claim không đỡ → `invalid_citations` / `unsupported_claims` (flag, không im lặng xóa)
+4. **Eval faithfulness** — LLM-judge (`--judge`) + refusal accuracy trên unanswerable.
+
+**Giới hạn trung thực:** support check n-gram là proxy rẻ, không phải NLI — diễn đạt lại bằng từ khác có thể bị flag oan. Nâng cấp tự nhiên: NLI hoặc LLM-judge từng claim.
+
+**Hiệu chỉnh `MIN_SCORE=0.25`:** với MiniLM multilingual, cosine thường nén thang điểm (~0.3 ≈ nhiễu, ~0.5–0.6 ≈ liên quan, ≥0.7 ≈ gần exact). 0.25 nằm vừa trên noise floor.
+
+---
+
+## 7. Kiến trúc (ngắn)
+
+```
+data/docs/*.md
+    → chunk (heading + paragraph)
+    → embed (MiniLM local)
+    → SQLite: files + chunks + vec0 (sqlite-vec) + FTS5
+
+câu hỏi
+    → agent (LangGraph create_react_agent, max 4 lượt)
+         tool: search_docs(query, top_k)
+         hybrid: vector top-k + FTS5 top-k → RRF → threshold
+    → LLM trả lời + [chunk_id]
+    → citation verifier
+    → {answer, citations, search_trace, low_confidence, unsupported_claims}
+```
+
+**Vì sao hybrid + RRF?** Vector bắt nghĩa; FTS bắt số/tên riêng chính xác. RRF chỉ cần hạng, không cần chuẩn hóa cosine vs BM25-like.
+
+**Vì sao agent + mode stuff?** Agent tự reformulate / multi-hop; stuff rẻ hơn và dùng khi model không tool-call. Eval so hai mode bằng số, không cảm tính.
+
+**Framework boundary:** LangChain/LangGraph lo cơ chế (agent loop, tool schema, splitter). **Retrieval + RRF + citation verify + eval là code tự viết** — phần thể hiện năng lực. Không dùng LangSmith; log JSONL tự thu (`logs/`).
+
+Cấu trúc code (layered backend):
+
+```
+src/chakra_rag/
+  config.py
+  core/          # chunking, embedding, retrieval, llm, agent, verification
+  storage/       # SQLite store
+  ingestion/     # worker ingest
+  observability/ # telemetry JSONL
+  service/       # RagService composition root
+  interfaces/    # cli + fastapi
+scripts/run_eval.py
+eval/golden.json
+tests/test_smoke.py
+```
+
+Chi tiết thiết kế: xem `DESIGN.md`.
+
+---
+
+## 8. API + UI (tuỳ chọn — ngoài yêu cầu đề)
+
+```bash
+# Terminal 1 — API
+PYTHONPATH=src uvicorn chakra_rag.interfaces.api:app --reload --port 8000
+
+# Terminal 2 — UI
+cd ui && npm install && npm run dev
+# http://localhost:5173  (proxy /api → :8000)
+```
+
+- Upload `.md` / `.txt` từ sidebar → worker nền chunk + embed → chấm xanh khi ready  
+- Chat streaming (SSE): thinking / tool calls / answer + citation chip mở đoạn gốc  
+- **Không auto-seed** `data/docs` khi mở API: index chỉ gồm file user upload (hoặc đã `ingest` CLI trước đó)  
+- Đổi `.env` cần **restart** backend (`--reload` chỉ theo dõi file `.py`)
+
+---
+
+## 9. Giả định
+
+- Corpus demo tự soạn, tiếng Việt, quy mô nhỏ (vài chục chunk) — đủ chứng minh pipeline, không giả lập production scale.
+- LLM qua endpoint OpenAI-compatible; người chấm cần 1 key hoặc Ollama.
+- Đầu vào chính cho take-home: `.md` / `.txt` sạch (không OCR PDF scan / bảng phức tạp trong phạm vi 48h).
+- Mode `agent` cần model function-calling; không thì `--mode stuff`.
+- `data/docs` phục vụ **CLI demo + golden eval**. UI live index = những gì đã có trong DB sau upload/`ingest` của người dùng.
+- Embedding chạy local CPU; lần đầu tải model chậm hơn.
+
+---
+
+## 10. Nếu có thêm thời gian
+
+- Reranker cross-encoder (rất hiệu quả corpus nhỏ)
+- Support check nâng NLI / LLM-judge từng claim
+- Semantic chunking + parent-document retrieval
+- Agent đa tool: `list_documents`, `read_chunk`
+- Golden set lớn hơn + eval trong CI
+- Hỗ trợ PDF (text layer) / lịch sử hội thoại bền vững trên UI
+- Retry/backoff khi LLM gateway flaky
+
+---
+
+## 11. Cấu trúc thư mục quan trọng
+
+```
+chakra_rag/
+├── README.md                 # file này
+├── DESIGN.md                 # quyết định thiết kế chi tiết
+├── requirements.txt          # dependency pin
+├── .env.example
+├── src/chakra_rag/           # backend
+├── eval/golden.json          # bộ câu đánh giá
+├── scripts/run_eval.py
+├── tests/test_smoke.py
+├── data/
+│   ├── docs/                 # corpus seed (CLI + eval)
+│   ├── uploads/              # file upload UI (tham chiếu)
+│   └── cau_hoi_mau.txt       # gợi ý câu hỏi demo UI (không ingest)
+└── ui/                       # frontend tuỳ chọn
+```
+
+---
+
+## 12. Checklist nộp bài / demo nhanh
+
+1. `uv venv` + `uv pip install -r requirements.txt` + điền `.env`
+2. `PYTHONPATH=src python -m chakra_rag ingest`
+3. Chạy 3–5 câu mục §5; chụp/ghi nhận answer + citations
+4. `PYTHONPATH=src python scripts/run_eval.py` — ghi bảng metric ngắn
+5. Sẵn sàng giải thích: hybrid+RRF, `create_react_agent`, citation verifier, vì sao `MIN_SCORE=0.25`
+
+---
+
+## 13. Ghi chú kỹ thuật nhỏ
+
+- **Chunk ID ASCII** (`doc_slug#section-slug#0`): LLM phải tái tạo đúng id khi cite; tránh dấu tiếng Việt gây mismatch.
+- **Model thinking** (DeepSeek-R1, Qwen3…): subclass `ThinkingChatOpenAI` giữ/gửi lại `reasoning_content` quanh tool-call — không cần tắt thinking.
+- **Vector L2-normalize** trước khi lưu → khoảng cách L2 tương đương cosine.
+- Smoke tests không gọi LLM; eval end-to-end cần key + đã ingest seed docs.
