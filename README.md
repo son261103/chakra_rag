@@ -1,13 +1,5 @@
 # Chakra RAG
-
-Bài làm take-home **AI Engineer — Chitta Group** (Bộ phận Công nghệ & Dữ liệu).
-
-Pipeline RAG nhỏ: chia tài liệu → embedding → truy xuất → trả lời 3–5 câu hỏi kèm trích dẫn nguồn → đánh giá chất lượng đơn giản.
-
-> **Phạm vi theo đề:** UI / Cloud / dữ liệu lớn **không bắt buộc**. Phần demo chính là **CLI + eval**. UI (Vite/React) là phần bổ sung, có thể bỏ qua khi chấm.
-
 ---
-
 ## 1. Đề bài đã làm gì
 
 | Yêu cầu đề | Cách đáp ứng trong repo |
