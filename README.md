@@ -203,7 +203,7 @@ Chi tiết thiết kế: xem `DESIGN.md`.
 
 ---
 
-## 8. API + UI (tuỳ chọn — ngoài yêu cầu đề)
+## 8. API + UI
 
 ```bash
 # Terminal 1 — API
@@ -234,12 +234,11 @@ cd ui && npm install && npm run dev
 
 ## 10. Nếu có thêm thời gian
 
-- Reranker cross-encoder (rất hiệu quả corpus nhỏ)
+- Reranker cross-encoder
 - Support check nâng NLI / LLM-judge từng claim
 - Semantic chunking + parent-document retrieval
 - Agent đa tool: `list_documents`, `read_chunk`
 - Golden set lớn hơn + eval trong CI
-- Hỗ trợ PDF (text layer) / lịch sử hội thoại bền vững trên UI
 - Retry/backoff khi LLM gateway flaky
 
 ---
@@ -262,22 +261,3 @@ chakra_rag/
 │   └── cau_hoi_mau.txt       # gợi ý câu hỏi demo UI (không ingest)
 └── ui/                       # frontend tuỳ chọn
 ```
-
----
-
-## 12. Checklist nộp bài / demo nhanh
-
-1. `uv venv` + `uv pip install -r requirements.txt` + điền `.env`
-2. `PYTHONPATH=src python -m chakra_rag ingest`
-3. Chạy 3–5 câu mục §5; chụp/ghi nhận answer + citations
-4. `PYTHONPATH=src python scripts/run_eval.py` — ghi bảng metric ngắn
-5. Sẵn sàng giải thích: hybrid+RRF, `create_react_agent`, citation verifier, vì sao `MIN_SCORE=0.25`
-
----
-
-## 13. Ghi chú kỹ thuật nhỏ
-
-- **Chunk ID ASCII** (`doc_slug#section-slug#0`): LLM phải tái tạo đúng id khi cite; tránh dấu tiếng Việt gây mismatch.
-- **Model thinking** (DeepSeek-R1, Qwen3…): subclass `ThinkingChatOpenAI` giữ/gửi lại `reasoning_content` quanh tool-call — không cần tắt thinking.
-- **Vector L2-normalize** trước khi lưu → khoảng cách L2 tương đương cosine.
-- Smoke tests không gọi LLM; eval end-to-end cần key + đã ingest seed docs.
