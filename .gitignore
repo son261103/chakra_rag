@@ -1,0 +1,61 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+*.egg
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+*.cover
+.hypothesis/
+
+# Node / frontend
+node_modules/
+ui/node_modules/
+ui/dist/
+ui/build/
+**/tsconfig.tsbuildinfo
+*.tsbuildinfo
+.npm/
+.yarn/
+.pnpm-store/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Runtime data
+data/uploads/
+data/*.db
+data/*.db-*
+logs/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Misc
+*.log
+.cache/
+tmp/
+temp/

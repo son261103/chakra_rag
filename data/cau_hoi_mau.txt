@@ -1,0 +1,111 @@
+CÂU HỎI MẪU ĐỂ HỎI AGENT
+(Dùng để demo/test — copy từng câu vào ô chat. File này KHÔNG dùng để upload/ingest.)
+
+Corpus hiện tại (2 file trong data/uploads/):
+  1. chinh_sach_lam_viec_tu_xa.md
+  2. quy_dinh_dat_phong_hop.txt
+
+==========================================================
+NHÓM 1 — CÂU HỎI CƠ BẢN (1 đoạn tài liệu là đủ)
+==========================================================
+
+--- Làm việc từ xa ---
+
+1. Nhân viên được làm việc từ xa tối đa mấy ngày mỗi tuần?
+   (Kỳ vọng: 2 ngày/tuần)
+
+2. Ai là người quyết định một vị trí có được làm việc từ xa hay không?
+   (Kỳ vọng: Trưởng bộ phận)
+
+3. Nhân viên phải đăng ký ngày làm việc từ xa trước thời điểm nào?
+   (Kỳ vọng: trước 17 giờ của ngày làm việc liền kề trước đó)
+
+4. Nhân viên thử việc có được áp dụng chính sách làm việc từ xa không?
+   (Kỳ vọng: không — chỉ nhân viên chính thức đã xong thử việc, vị trí phù hợp)
+
+5. Khi làm việc từ xa, nhân viên phải tuân thủ những yêu cầu bảo mật nào?
+   (Kỳ vọng: không dùng mạng công cộng truy cập hệ thống nội bộ; không để người khác tiếp cận thiết bị)
+
+6. Trong giai đoạn cao điểm, trưởng bộ phận muốn điều chỉnh số ngày remote thì phải thông báo trước bao lâu?
+   (Kỳ vọng: ít nhất 3 ngày làm việc)
+
+--- Đặt phòng họp ---
+
+7. Đặt phòng họp trước được tối đa bao nhiêu ngày?
+   (Kỳ vọng: 14 ngày)
+
+8. Cuộc họp trên 10 người cần đặt phòng trước bao lâu?
+   (Kỳ vọng: ít nhất 2 ngày làm việc)
+
+9. Phòng họp đã đặt nhưng không ai dùng thì sau bao lâu bị giải phóng?
+   (Kỳ vọng: 15 phút kể từ giờ bắt đầu)
+
+10. Mỗi lượt đặt phòng họp tối thiểu và tối đa bao lâu?
+    (Kỳ vọng: tối thiểu 30 phút, tối đa 4 giờ liên tục; khung 30 phút)
+
+11. Khi đặt phòng họp cần ghi những thông tin gì?
+    (Kỳ vọng: mục đích, số người tham dự dự kiến, tên người chủ trì)
+
+12. Nhân viên đặt phòng họp bằng công cụ nào?
+    (Kỳ vọng: ứng dụng lịch nội bộ)
+
+==========================================================
+NHÓM 2 — CÂU HỎI GHÉP THÔNG TIN (cần đọc kỹ / nhiều đoạn)
+==========================================================
+
+13. Nhân viên đủ điều kiện remote đăng ký làm việc từ xa như thế nào, và trường hợp đột xuất thì xử lý ra sao?
+    (Kỳ vọng: đăng ký trước 17h ngày liền kề + phê duyệt QLTT; đột xuất báo tin nhắn trước giờ ca và hoàn tất đăng ký trong ngày)
+
+14. Những ai không thuộc phạm vi chính sách làm việc từ xa, và ai quyết định vị trí có remote được hay không?
+    (Kỳ vọng: thử việc / CTV / vị trí phải có mặt vận hành thiết bị — không áp dụng; trưởng bộ phận quyết định)
+
+15. Cuộc họp 12 người muốn dùng phòng lớn thì phải đặt trước tối thiểu bao lâu, và có được đặt trước 3 tuần không?
+    (Kỳ vọng: trên 10 người / phòng lớn → đặt trước ≥ 2 ngày làm việc; tối đa chỉ được đặt trước 14 ngày nên 3 tuần thì không)
+
+16. Nếu đặt phòng 9 giờ nhưng đến 9 giờ 20 vẫn chưa ai vào, hệ thống xử lý thế nào và người đặt còn trách nhiệm gì khi hủy họp?
+    (Kỳ vọng: sau 15 phút tự giải phóng; nếu hủy/hoãn phải hủy trên hệ thống ngay)
+
+==========================================================
+NHÓM 3 — CÂU HỎI "BẪY" (con số / chi tiết dễ nhầm trong 2 file)
+==========================================================
+
+17. Nhân viên remote tối đa mấy ngày mỗi tuần?
+    (Đáp án: 2 ngày/tuần — đừng nhầm với "thông báo trước 3 ngày làm việc" khi điều chỉnh cao điểm)
+
+18. Đặt phòng trước tối đa bao nhiêu ngày? Còn họp trên 10 người phải đặt trước tối thiểu bao nhiêu ngày làm việc?
+    (Đáp án: tối đa 14 ngày; tối thiểu 2 ngày làm việc cho họp >10 người / phòng lớn — hai mốc khác nhau)
+
+19. Phòng trống bị giải phóng sau bao lâu? Khung đặt phòng theo bước bao nhiêu phút?
+    (Đáp án: 15 phút không dùng thì giải phóng; khung đặt 30 phút)
+
+20. Thông báo điều chỉnh remote trong cao điểm là trước bao nhiêu ngày làm việc?
+    (Đáp án: 3 ngày làm việc — đừng nhầm với 2 ngày remote/tuần hay 2 ngày đặt phòng họp lớn)
+
+==========================================================
+NHÓM 4 — CÂU HỎI KHÔNG CÓ TRONG 2 FILE (test từ chối / anti-hallucination)
+==========================================================
+Các chủ đề dưới đây CỐ Ý không có trong corpus hiện tại
+(chinh_sach_lam_viec_tu_xa.md, quy_dinh_dat_phong_hop.txt).
+
+21. Nhân viên chính thức được nghỉ phép bao nhiêu ngày mỗi năm?
+22. Mức hoàn phí đào tạo tối đa cho nhân viên dưới 2 năm là bao nhiêu?
+23. Pull request cần ít nhất bao nhiêu approval trước khi merge?
+24. Công ty có chính sách hỗ trợ mua laptop cá nhân không?
+25. Mức lương khởi điểm của nhân viên mới là bao nhiêu?
+26. Khi phát hiện rò rỉ dữ liệu, nhân viên phải báo trong vòng bao lâu?
+
+(Kỳ vọng: agent nói rõ tài liệu không có thông tin / không bịa.
+Nếu bịa → kiểm tra badge cảnh báo và search trace trong UI.)
+
+==========================================================
+GỢI Ý KHI DEMO (với đúng 2 file uploads)
+==========================================================
+
+- Câu 1 hoặc 7: factoid rõ, có citation chip — bấm xem nguồn.
+- Câu 5 hoặc 13: câu trả lời có list / nhiều ý — xem markdown render.
+- Câu 15 hoặc 16: ghép nhiều điều kiện trong cùng 1 file.
+- Câu 17–20: bẫy số liệu (2 / 3 / 14 / 15 / 30).
+- Câu 21–26: unanswerable — phải từ chối, không lấy kiến thức ngoài corpus.
+
+Không hỏi các chủ đề ngoài 2 file này nếu mục tiêu là demo grounding đúng corpus
+(nghỉ phép, hoàn phí đào tạo, code review, bảo mật dữ liệu chi tiết… hiện không có trong uploads).
