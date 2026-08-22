@@ -20,11 +20,21 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import sqlite_vec
+
+
+def _utcnow_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _new_id() -> str:
+    return uuid.uuid4().hex
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS chunks (
@@ -56,6 +66,26 @@ CREATE TABLE IF NOT EXISTS files (
     chunks_done  INTEGER NOT NULL DEFAULT 0,
     error        TEXT
 );
+
+CREATE TABLE IF NOT EXISTS conversations (
+    id         TEXT PRIMARY KEY,
+    title      TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id               TEXT PRIMARY KEY,
+    conversation_id  TEXT NOT NULL,
+    role             TEXT NOT NULL,  -- 'user' | 'assistant'
+    content          TEXT NOT NULL,
+    payload_json     TEXT,           -- AskResponse JSON cho assistant
+    created_at       TEXT NOT NULL,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_conversation
+    ON messages(conversation_id, created_at);
 """
 
 
@@ -136,6 +166,20 @@ class Store:
                 "SELECT * FROM chunks WHERE chunk_id = ?", (chunk_id,)
             ).fetchone()
         return dict(row) if row else None
+
+    def list_chunks_by_doc(self, doc: str) -> list[dict[str, Any]]:
+        """Toàn bộ chunk của một tài liệu, theo thứ tự vị trí trong file."""
+        with self._lock:
+            rows = self.conn.execute(
+                """
+                SELECT id, chunk_id, doc, section, text, char_start, char_end
+                FROM chunks
+                WHERE doc = ?
+                ORDER BY char_start ASC, id ASC
+                """,
+                (doc,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def count_chunks(self) -> int:
         with self._lock:
@@ -247,6 +291,168 @@ class Store:
                 "SELECT * FROM files WHERE file_id = ?", (file_id,)
             ).fetchone()
         return dict(row) if row else None
+
+    def delete_file(self, file_id: str) -> dict[str, Any] | None:
+        """Xóa metadata file + mọi chunk của doc cùng tên. Trả về row đã xóa hoặc None."""
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT * FROM files WHERE file_id = ?", (file_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            meta = dict(row)
+            doc = meta["name"]
+            rowids = [
+                r["id"]
+                for r in self.conn.execute("SELECT id FROM chunks WHERE doc = ?", (doc,))
+            ]
+            if rowids:
+                placeholders = ",".join("?" * len(rowids))
+                self.conn.execute(f"DELETE FROM vec_chunks WHERE rowid IN ({placeholders})", rowids)
+                self.conn.execute(f"DELETE FROM fts_chunks WHERE rowid IN ({placeholders})", rowids)
+                self.conn.execute(f"DELETE FROM chunks WHERE id IN ({placeholders})", rowids)
+            self.conn.execute("DELETE FROM files WHERE file_id = ?", (file_id,))
+            self.conn.commit()
+            meta["chunks_removed"] = len(rowids)
+            return meta
+
+    def fail_interrupted_ingests(self) -> int:
+        """Đánh failed các job dở (queued/parsing/…) sau restart — không tự nhúng lại."""
+        with self._lock:
+            cur = self.conn.execute(
+                """
+                UPDATE files
+                SET status = 'failed',
+                    error = 'Bị gián đoạn khi server dừng — bấm Nhúng lại RAG'
+                WHERE status IN ('queued', 'parsing', 'chunking', 'embedding')
+                """
+            )
+            self.conn.commit()
+            return cur.rowcount
+
+    # ---------- conversations / messages ----------
+
+    def create_conversation(self, title: str = "Hội thoại mới") -> dict[str, Any]:
+        cid = _new_id()
+        now = _utcnow_iso()
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (cid, title, now, now),
+            )
+            self.conn.commit()
+        return {"id": cid, "title": title, "created_at": now, "updated_at": now}
+
+    def list_conversations(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self.conn.execute(
+                """
+                SELECT c.id, c.title, c.created_at, c.updated_at,
+                       (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
+                FROM conversations c
+                ORDER BY c.updated_at DESC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_conversation(self, conversation_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?",
+                (conversation_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def rename_conversation(self, conversation_id: str, title: str) -> None:
+        now = _utcnow_iso()
+        with self._lock:
+            self.conn.execute(
+                "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?",
+                (title, now, conversation_id),
+            )
+            self.conn.commit()
+
+    def touch_conversation(self, conversation_id: str) -> None:
+        now = _utcnow_iso()
+        with self._lock:
+            self.conn.execute(
+                "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                (now, conversation_id),
+            )
+            self.conn.commit()
+
+    def delete_conversation(self, conversation_id: str) -> bool:
+        with self._lock:
+            # SQLite FK cascade cần PRAGMA; xóa messages thủ công cho chắc.
+            self.conn.execute("DELETE FROM messages WHERE conversation_id = ?", (conversation_id,))
+            cur = self.conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+            self.conn.commit()
+            return cur.rowcount > 0
+
+    def add_message(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        mid = _new_id()
+        now = _utcnow_iso()
+        payload_json = json.dumps(payload, ensure_ascii=False) if payload is not None else None
+        with self._lock:
+            self.conn.execute(
+                """
+                INSERT INTO messages (id, conversation_id, role, content, payload_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (mid, conversation_id, role, content, payload_json, now),
+            )
+            self.conn.execute(
+                "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                (now, conversation_id),
+            )
+            self.conn.commit()
+        return {
+            "id": mid,
+            "conversation_id": conversation_id,
+            "role": role,
+            "content": content,
+            "payload": payload,
+            "created_at": now,
+        }
+
+    def list_messages(self, conversation_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self.conn.execute(
+                """
+                SELECT id, conversation_id, role, content, payload_json, created_at
+                FROM messages
+                WHERE conversation_id = ?
+                ORDER BY created_at ASC, rowid ASC
+                """,
+                (conversation_id,),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            raw = item.pop("payload_json", None)
+            if raw:
+                try:
+                    item["payload"] = json.loads(raw)
+                except json.JSONDecodeError:
+                    item["payload"] = None
+            else:
+                item["payload"] = None
+            out.append(item)
+        return out
+
+    def list_history_for_llm(self, conversation_id: str, max_turns: int = 8) -> list[dict[str, str]]:
+        """Lấy tối đa max_turns cặp user/assistant gần nhất (chỉ role + content text)."""
+        messages = self.list_messages(conversation_id)
+        # Giữ đúng thứ tự thời gian; cắt theo số message (2 * turns).
+        limit = max(0, max_turns) * 2
+        trimmed = messages[-limit:] if limit else []
+        return [{"role": m["role"], "content": m["content"]} for m in trimmed if m["role"] in ("user", "assistant")]
 
 
 def _fts_escape(query: str) -> str:

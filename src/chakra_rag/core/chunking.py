@@ -10,11 +10,19 @@ trích dẫn chính xác: từ chunk_id luôn tra ngược về đúng đoạn t
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
 _HEADING_LEVELS = [("#", "h1"), ("##", "h2"), ("###", "h3")]
+
+# Dòng tiêu đề kiểu CV/resume: OBJECTIVE, EDUCATION, SKILLS & INTERESTS, …
+_ALL_CAPS_HEADING = re.compile(
+    r"^[A-Z][A-Z0-9][A-Z0-9 &/,'+.–-]{0,58}[A-Z0-9)]$|"
+    r"^[A-Z][A-Z0-9 &/,'+.–-]{2,58}$"
+)
+_PAGE_MARK = re.compile(r"^\[Trang\s+\d+\]$", re.I)
 
 
 @dataclass(frozen=True)
@@ -26,9 +34,9 @@ class Chunk:
     """
 
     text: str
-    doc: str          # tên file tài liệu
-    section: str      # heading gần nhất (hoặc "(mở đầu)")
-    char_start: int   # vị trí bắt đầu trong file gốc
+    doc: str  # tên file tài liệu
+    section: str  # heading gần nhất (hoặc "(mở đầu)")
+    char_start: int  # vị trí bắt đầu trong file gốc
     char_end: int
 
 
@@ -65,8 +73,51 @@ def chunk_markdown(text: str, doc: str, chunk_size: int = 300, chunk_overlap: in
     return chunks
 
 
+def structure_plain_document(text: str) -> str:
+    """Gắn ## cho tiêu đề ALL-CAPS / [Trang N] để chunk_markdown giữ section.
+
+    Dùng cho PDF/TXT kiểu CV, policy — không đụng nội dung, chỉ chèn marker.
+    """
+    out: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            out.append("")
+            continue
+        if _PAGE_MARK.match(line):
+            out.append(f"## {line}")
+            out.append("")
+            continue
+        letters = re.sub(r"[^A-Za-z]", "", line)
+        if (
+            2 <= len(line) <= 64
+            and letters
+            and letters.isupper()
+            and len(line.split()) <= 8
+            and not line.endswith(".")
+            and _ALL_CAPS_HEADING.match(line)
+        ):
+            out.append(f"## {line}")
+            out.append("")
+            continue
+        out.append(raw_line.rstrip())
+    structured = "\n".join(out)
+    structured = re.sub(r"([A-Za-z])\s*-\s*\n\s*([A-Za-z])", r"\1-\2", structured)
+    structured = re.sub(r"[ \t]{2,}", " ", structured)
+    return structured.strip() + "\n"
+
+
 def chunk_plain_text(text: str, doc: str, chunk_size: int = 300, chunk_overlap: int = 50) -> list[Chunk]:
-    """Cắt tài liệu không có cấu trúc markdown (txt)."""
+    """Cắt tài liệu không markdown (txt/pdf đã extract).
+
+    Nếu phát hiện tiêu đề cấu trúc → chuyển pseudo-markdown rồi cắt theo section
+    (tránh cả file dính section '(toàn văn)' nhìn cụt trong UI).
+    """
+    structured = structure_plain_document(text)
+    heading_hits = structured.count("\n## ") + (1 if structured.startswith("## ") else 0)
+    if heading_hits >= 1:
+        return chunk_markdown(structured, doc, chunk_size, chunk_overlap)
+
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,

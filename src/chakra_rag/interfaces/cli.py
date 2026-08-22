@@ -1,4 +1,4 @@
-"""CLI: ingest / ask / eval — chạy nhanh không cần API hay UI.
+"""CLI: ingest / ask / files — chạy nhanh không cần API hay UI.
 
 Cách dùng:
     python -m chakra_rag ingest            # ingest data/docs vào DB

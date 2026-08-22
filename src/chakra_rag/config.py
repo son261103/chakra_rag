@@ -45,6 +45,9 @@ class Config:
     llm_base_url: str = "https://api.openai.com/v1"
     llm_api_key: str = ""
     llm_model: str = "gpt-4o-mini"
+    # Retry gateway/connect flaky (502/5xx/timeout) — openai SDK backoff.
+    llm_max_retries: int = 5
+    llm_timeout: float = 90.0
 
     # Embedding (local)
     embed_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -62,6 +65,8 @@ class Config:
     rrf_k: int = 60
     min_score: float = 0.25
     max_agent_turns: int = 4
+    # Số lượt user+assistant gần nhất đưa vào multi-turn (mỗi lượt = 1 user + 1 assistant).
+    chat_history_turns: int = 8
 
     def ensure_dirs(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -76,6 +81,8 @@ def get_config() -> Config:
         llm_base_url=_env("LLM_BASE_URL", "https://api.openai.com/v1"),
         llm_api_key=_env("LLM_API_KEY", ""),
         llm_model=_env("LLM_MODEL", "gpt-4o-mini"),
+        llm_max_retries=_env_int("LLM_MAX_RETRIES", 5),
+        llm_timeout=_env_float("LLM_TIMEOUT", 90.0),
         embed_model=_env(
             "EMBED_MODEL",
             "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
@@ -90,6 +97,7 @@ def get_config() -> Config:
         rrf_k=_env_int("RRF_K", 60),
         min_score=_env_float("MIN_SCORE", 0.25),
         max_agent_turns=_env_int("MAX_AGENT_TURNS", 4),
+        chat_history_turns=_env_int("CHAT_HISTORY_TURNS", 8),
     )
     cfg.ensure_dirs()
     return cfg

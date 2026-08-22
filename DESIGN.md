@@ -6,12 +6,11 @@
 
 | Tiêu chí chấm | Hệ quả thiết kế |
 |---|---|
-| Chất lượng truy xuất & mức liên quan | Không chỉ vector search: thêm lexical (FTS5) + fusion, và **đo được** retrieval bằng Recall@k / MRR trên golden set |
+| Chất lượng truy xuất & mức liên quan | Không chỉ vector search: thêm lexical (FTS5) + fusion, threshold gate đánh dấu `low_confidence` |
 | Grounding & trích dẫn đáng tin | Citation không phải chỉ là dòng nhắc trong prompt — phải có **bước kiểm tra trích dẫn sau khi sinh** (citation verification) |
-| Tư duy đánh giá & kiểm soát chất lượng | Script eval chạy ra bảng số liệu: retrieval metrics + faithfulness + citation precision + refusal trên câu không trả lời được |
 | Mã sạch, thực dụng | Một package nhỏ, CLI + FastAPI mỏng, ít phụ thuộc, chạy được ngay |
 
-Đề nói KHÔNG cần UI, cloud, dữ liệu lớn → thời gian ưu tiên tuyệt đối cho **retrieval quality + grounding + eval** trước; UI (Vite + React + TS) làm **sau cùng như phần bonus** để demo trực quan — không để nó ăn vào ngân sách của phần lõi.
+Đề nói KHÔNG cần UI, cloud, dữ liệu lớn → thời gian ưu tiên tuyệt đối cho **retrieval quality + grounding** trước; UI (Vite + React + TS) làm **sau cùng như phần bonus** để demo trực quan — không để nó ăn vào ngân sách của phần lõi.
 
 ## 2. Kiến trúc tổng thể
 
@@ -79,7 +78,7 @@ Hai đường vào: **CLI** (`python -m chakra_rag ask "..."`) để chấm nhan
 
 ### 3.1 Corpus: tự soạn, nhỏ, có chủ đích
 - 3–4 tài liệu guideline tiếng Việt ngắn (ví dụ: chính sách nghỉ phép, quy trình hoàn phí, quy định bảo mật dữ liệu, chuẩn code nội bộ). Mỗi tài liệu vài section.
-- **Lý do**: corpus tự soạn ⇒ tự label được ground-truth chunk cho eval, và cố tình cài được các "bẫy" truy xuất:
+- **Lý do**: corpus tự soạn ⇒ kiểm soát được nội dung, và cố tình cài được các "bẫy" truy xuất:
   - 2 đoạn gần nghĩa ở 2 tài liệu khác nhau (test phân biệt),
   - câu hỏi cần ghép thông tin từ 2 chunk (test multi-hop nhẹ),
   - 1–2 câu hỏi **không có trong tài liệu** (test hành vi từ chối — anti-hallucination).
@@ -117,7 +116,6 @@ Vì sao hợp với bài này:
 - Fusion: **Reciprocal Rank Fusion** (không cần chuẩn hóa score, 1 dòng code, ổn định):
   `score(d) = Σ 1/(60 + rank_i(d))`
 - Lấy top 4–6 sau fusion; **threshold gate**: nếu score/độ phủ quá thấp → đánh dấu `low_confidence` và câu trả lời mặc định là từ chối một phần/toàn bộ.
-- Trong bài: bật/tắt hybrid bằng 1 flag để **ablation trong báo cáo eval** (vector-only vs hybrid) — đây là bằng chứng cụ thể cho "chất lượng truy xuất".
 
 ### 3.6 Generation: agent loop bằng LangGraph — LLM tự gọi tool `search_docs`
 
@@ -159,7 +157,7 @@ def ask(question, max_turns=4):
     messages = result["messages"]
     answer = messages[-1].content
     tool_returned = extract_chunks_from_tool_messages(messages)  # bằng chứng hợp lệ
-    trace = build_search_trace(messages)                          # cho UI + eval
+    trace = build_search_trace(messages)                          # cho UI
     return finalize(answer, tool_returned, trace)   # citation verification ở đây
 ```
 
@@ -178,7 +176,7 @@ def ask(question, max_turns=4):
 - Thể hiện hiểu biết agentic RAG nhưng vẫn kiểm soát được: 1 tool, vòng lặp hữu hạn, verifier độc lập với LLM.
 - Đánh đổi: 2–4 LLM call mỗi câu thay vì 1 (chi phí/độ trễ) — ghi rõ trong README.
 
-**Giữ mode cổ điển để so sánh**: `ask(mode="stuff")` — retrieve một lần rồi nhét context vào prompt — để ablation trên golden set: agent loop có thực sự đáng số LLM call bỏ ra trên corpus này không? Số liệu trả lời, không phải cảm tính.
+**Giữ mode cổ điển để so sánh**: `ask(mode="stuff")` — retrieve một lần rồi nhét context vào prompt — dùng khi model không hỗ trợ function calling, và để so sánh chi phí/độ trễ với agent loop.
 
 ### 3.7 Citation verification — điểm khác biệt chính
 Sau khi LLM trả lời, chạy bước hậu kiểm:
@@ -214,7 +212,7 @@ Chạy: `uvicorn chakra_rag.interfaces.api:app`. Logic nằm hết trong service
 
 ### 3.9 UI: Vite + React + TypeScript (phần bonus — làm sau cùng)
 
-Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồng **upload → ingest → chat**, không phải làm sản phẩm. Vì đề nói rõ không kỳ vọng UI, phần này chỉ đáng làm khi pipeline + eval đã xong và còn thời gian.
+Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồng **upload → ingest → chat**, không phải làm sản phẩm. Vì đề nói rõ không kỳ vọng UI, phần này chỉ đáng làm khi pipeline đã xong và còn thời gian.
 
 - **Stack**: Vite + React 18 + TypeScript, không UI framework nặng (CSS thuần hoặc Tailwind tùy chọn). Giữ tối giản: 1 màn hình duy nhất.
 - **Layout 2 cột**:
@@ -229,7 +227,7 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 
 ### 3.10 Chọn framework: dùng LangChain + LangGraph, KHÔNG dùng LangSmith (logs tự thu)
 
-**Quyết định cuối cùng**: dùng LangChain + LangGraph để code gọn; bỏ LangSmith, observability bằng **logs JSONL tự thu**. Nguyên tắc xuyên suốt: framework lo phần cơ khí (vòng lặp tool-calling, parse message, prompt template), **nghiệp vụ chấm điểm phải tự viết** (hybrid retrieval, RRF, citation verifier, eval) — đây là phần thể hiện năng lực và là thứ bị hỏi xoáy khi phỏng vấn.
+**Quyết định cuối cùng**: dùng LangChain + LangGraph để code gọn; bỏ LangSmith, observability bằng **logs JSONL tự thu**. Nguyên tắc xuyên suốt: framework lo phần cơ khí (vòng lặp tool-calling, parse message, prompt template), **nghiệp vụ chấm điểm phải tự viết** (hybrid retrieval, RRF, citation verifier) — đây là phần thể hiện năng lực và là thứ bị hỏi xoáy khi phỏng vấn.
 
 **Dùng gì của LangChain/LangGraph, và vì sao:**
 
@@ -240,7 +238,7 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 | `langchain_openai.ChatOpenAI` | ✅ | Chat model + function calling qua `base_url` cấu hình được (OpenAI/OpenRouter/compatible). |
 | `langchain_text_splitters` | ✅ | `MarkdownHeaderTextSplitter` + `RecursiveCharacterTextSplitter` cho chunking theo cấu trúc — chuẩn, ít code, dễ giải thích tham số. |
 | Vector store abstraction của LangChain | ❌ | sqlite-vec không phải store first-class; hybrid retrieval + RRF là phần tự viết — giữ `store.py`/`retrieve.py` thuần Python để kiểm soát và giải thích được. |
-| **LangSmith** | ❌ | SaaS, cần tài khoản, gửi dữ liệu ra ngoài. Thay bằng `telemetry.py`: log JSONL mỗi lần ask — offline, tự sở hữu, đủ cho UI trace và eval. |
+| **LangSmith** | ❌ | SaaS, cần tài khoản, gửi dữ liệu ra ngoài. Thay bằng `telemetry.py`: log JSONL mỗi lần ask — offline, tự sở hữu, đủ cho UI trace. |
 
 **Logs tự thu** (`telemetry.py`, thay LangSmith): mỗi lần ask ghi 1 dòng JSONL vào `logs/asks.jsonl`:
 ```json
@@ -265,39 +263,13 @@ File này đồng thời là dataset thật để phân tích chất lượng sa
 
 ## 4. Chiến lược chống hallucination (phần phải viết trong bài nộp)
 
-Phòng thủ nhiều lớp, mỗi lớp đo được:
-1. **Retrieval gate** — không đủ bằng chứng thì không trả lời (đo bằng câu unanswerable trong golden set).
+Phòng thủ nhiều lớp:
+1. **Retrieval gate** — không đủ bằng chứng thì không trả lời.
 2. **Prompt ràng buộc** + temperature 0 — giảm sinh tự do.
-3. **Citation bắt buộc + hậu kiểm** — verifier chỉ chấp nhận chunk_id nằm trong tập tool thực sự trả về trong phiên (bịa nguồn bị bắt ngay); claim không được chunk đỡ sẽ bị flag (đo bằng citation precision).
-4. **Faithfulness metric** trong eval — chấm điểm groundedness từng câu trả lời.
-5. Trung thực về giới hạn: overlap-based support check là proxy, không phải NLI — ghi rõ trong README.
+3. **Citation bắt buộc + hậu kiểm** — verifier chỉ chấp nhận chunk_id nằm trong tập tool thực sự trả về trong phiên (bịa nguồn bị bắt ngay); claim không được chunk đỡ sẽ bị flag.
+4. Trung thực về giới hạn: overlap-based support check là proxy, không phải NLI — ghi rõ trong README.
 
-## 5. Đánh giá chất lượng — đơn giản nhưng ra số
-
-`eval/golden.json`: 6–8 câu do mình soạn kèm ground truth:
-```json
-{
-  "question": "...",
-  "reference_answer": "...",
-  "gold_chunks": ["hoanphi#s2#1"],
-  "type": "factoid | multi-hop | unanswerable"
-}
-```
-
-`scripts/run_eval.py` chạy ra bảng:
-
-| Nhóm | Metric | Cách tính |
-|---|---|---|
-| Retrieval | Recall@k, MRR | gold_chunks có xuất hiện trong top-k không |
-| Trả lời | Correctness | LLM-judge 1–5 so với reference (rubric ghi trong code) + token-F1 cho câu factoid |
-| Grounding | Faithfulness | LLM-judge: mọi claim có được context đỡ không |
-| Trích dẫn | Citation precision | % citation trỏ đúng chunk gold / chunk thực sự đỡ claim |
-| Anti-hallucination | Refusal accuracy | câu unanswerable có bị từ chối đúng không |
-| Agent | Số lượt gọi tool / câu | đọc từ search_trace; so sánh `mode=stuff` vs `mode=agent` trên cùng golden set để trả lời "agent loop có đáng số LLM call bỏ ra không" |
-
-Output: JSON + bảng markdown in ra console. Kèm ablation vector-only vs hybrid. Đó là câu chuyện "tư duy đánh giá" trọn vẹn mà không cần framework nặng (RAGAS chỉ nhắc đến như hướng mở rộng).
-
-## 6. Cấu trúc thư mục
+## 5. Cấu trúc thư mục
 
 ```
 chakra_rag/
@@ -309,7 +281,6 @@ chakra_rag/
 ├── data/docs/*.md            # corpus seed (được đăng ký vào bảng files như file thường)
 ├── data/uploads/             # file người dùng upload qua UI
 ├── logs/asks.jsonl           # logs tự thu (thay LangSmith) — sinh khi chạy
-├── eval/golden.json
 ├── src/chakra_rag/           # tổ chức theo tầng, dependency một chiều từ ngoài vào trong
 │   ├── config.py             # đọc env, dataclass Config
 │   ├── core/                 # nghiệp vụ lõi, không phụ thuộc framework
@@ -325,7 +296,6 @@ chakra_rag/
 │   └── interfaces/           # các lối vào, không chứa nghiệp vụ
 │       ├── api.py            #   FastAPI mỏng + CORS + endpoints files/progress
 │       └── cli.py            #   ingest / ask / files
-├── scripts/run_eval.py
 ├── tests/test_smoke.py       # chunking + store + retrieve + verify chạy không cần LLM
 └── ui/                       # BONUS — Vite + React + TS, tổ chức theo feature
     ├── package.json
@@ -344,9 +314,9 @@ chakra_rag/
             └── sources/SourcePanel.tsx   # hiển thị chunk gốc khi click citation
 ```
 
-## 7. Kế hoạch làm trong 48h (có buffer)
+## 6. Kế hoạch làm trong 48h (có buffer)
 
-Nguyên tắc: **phần lõi + eval xong trước, UI làm sau cùng**. Nếu chậm tiến độ, cắt UI đầu tiên — đề không yêu cầu.
+Nguyên tắc: **phần lõi xong trước, UI làm sau cùng**. Nếu chậm tiến độ, cắt UI đầu tiên — đề không yêu cầu.
 
 | Bước | Nội dung | ~Thời gian |
 |---|---|---|
@@ -355,12 +325,11 @@ Nguyên tắc: **phần lõi + eval xong trước, UI làm sau cùng**. Nếu ch
 | 3 | retrieve hybrid + RRF + threshold | 3h |
 | 4 | agent loop (tool calling) + citation verification | 5h |
 | 5 | FastAPI + CORS + ingest worker nền có tiến trình + smoke tests | 3h |
-| 6 | golden set + eval script + chạy ablation | 4h |
-| 7 | UI Vite + React + TS (upload, tiến trình %, chấm xanh, citation chip, source panel) | 5h |
-| 8 | README: cách chạy, quyết định, giả định, "nếu có thêm thời gian" | 3h |
-| 9 | Buffer / rà soát lại toàn bộ, chạy sạch từ đầu | 4h+ |
+| 6 | UI Vite + React + TS (upload, tiến trình %, chấm xanh, citation chip, source panel) | 5h |
+| 7 | README: cách chạy, quyết định, giả định, "nếu có thêm thời gian" | 3h |
+| 8 | Buffer / rà soát lại toàn bộ, chạy sạch từ đầu | 4h+ |
 
-## 8. Giả định & rủi ro
+## 7. Giả định & rủi ro
 
 **Giả định** (ghi vào README bài nộp):
 - Corpus demo tự soạn, tiếng Việt, quy mô vài chục chunk — đủ chứng minh pipeline; với corpus lớn sẽ phải tính lại chunk size, thêm reranker/ANN.
@@ -374,11 +343,10 @@ Nguyên tắc: **phần lõi + eval xong trước, UI làm sau cùng**. Nếu ch
 - Model không hỗ trợ function calling tốt (nhất là model local nhỏ) → giữ fallback `mode=stuff` (retrieve trước, nhét context vào prompt) để hệ thống vẫn chạy; mặc định dùng model có tool calling.
 - Agent loop không hội tụ (gọi tool liên tục) → giới hạn `max_turns=4`, quá lượt thì ép chốt dựa trên bằng chứng tốt nhất đã thu thập, kèm cờ cảnh báo.
 
-## 9. Nếu có thêm thời gian (ghi vào bài nộp)
+## 8. Nếu có thêm thời gian (ghi vào bài nộp)
 
 - Reranker cross-encoder (đặc biệt hiệu quả với corpus nhỏ).
 - Support check nâng cấp: NLI model hoặc LLM-judge từng claim thay vì n-gram overlap.
 - Semantic chunking + chunk hierarchy (parent-document retrieval).
-- Golden set lớn hơn + RAGAS/đánh giá liên tục trong CI.
 - Agent đa tool: thêm `list_documents`, `read_chunk` bên cạnh `search_docs` để agent tự điều hướng khi corpus lớn (hiện tại 1 tool là đủ cho corpus nhỏ) — LangGraph mở rộng việc này tự nhiên.
 - LangSmith nếu làm việc theo team và cần tracing/so sánh prompt tập trung; hiện tại logs JSONL tự thu là đủ.

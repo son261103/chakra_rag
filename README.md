@@ -9,7 +9,6 @@
 | Truy xuất | Hybrid: vector (`sqlite-vec`) + lexical (FTS5) → Reciprocal Rank Fusion |
 | Trả lời + trích dẫn | Agent gọi tool `search_docs` (LangGraph) hoặc mode `stuff`; mỗi claim kèm `[chunk_id]` |
 | Hạn chế hallucination | Retrieval gate + prompt ràng buộc + citation verifier độc lập LLM |
-| Đánh giá đơn giản | Golden set 8 câu + `scripts/run_eval.py` (Recall@k, MRR, token-F1, citation precision, refusal) |
 | Mã chạy được + hướng dẫn | README này + CLI `ingest` / `ask` / `files` |
 
 ---
@@ -84,37 +83,15 @@ Lần đầu chạy embedding model sẽ **tải về máy** (cần mạng). DB 
 
 ---
 
-## 4. Đánh giá chất lượng
-
-```bash
-# Cần đã ingest data/docs (golden set trỏ vào 4 file seed đó)
-PYTHONPATH=src python scripts/run_eval.py
-PYTHONPATH=src python scripts/run_eval.py --judge   # thêm LLM-judge (tốn token hơn)
-```
-
-**Golden set** (`eval/golden.json`): 8 câu tự soạn
-
-- 5 factoid (1 đoạn đủ)
-- 1 multi-hop (ghép ≥2 chunk)
-- 2 unanswerable (không có trong tài liệu → kỳ vọng từ chối)
-
-**Metric đo:**
-
-| Nhóm | Metric |
-|---|---|
-| Retrieval | Recall@k, MRR (trên câu trả lời được) |
-| Answer | token-F1 so reference; LLM-judge correctness (`--judge`) |
-| Grounding | citation precision; LLM-judge faithfulness (`--judge`) |
-| Anti-hallucination | refusal accuracy trên câu unanswerable |
-| Agent | số lượt tool trung bình; ablation `agent` vs `stuff` |
-
-Tham chiếu retrieval trên corpus seed (đã đo): **Recall@5 = 6/6, MRR = 1.0** (mọi câu trả lời được hit hạng 1).
+## 4. Kiểm tra chất lượng
 
 **Test không cần LLM:**
 
 ```bash
 PYTHONPATH=src python -m pytest tests/ -v
 ```
+
+Test các tầng tự viết: chunking, store (sqlite-vec + FTS5), retrieve (RRF), citation verify, ingest.
 
 ---
 
@@ -144,7 +121,7 @@ Mỗi câu trả lời in kèm **Nguồn** dạng `[chunk_id] doc — section`. 
 
 ---
 
-## 6. Chống hallucination (4 lớp)
+## 6. Chống hallucination (3 lớp)
 
 1. **Retrieval gate** — điểm vector cao nhất &lt; `MIN_SCORE` (mặc định 0.25) → `low_confidence`; hệ thống ưu tiên từ chối hơn bịa.
 2. **Prompt ràng buộc + temperature 0** — chỉ dùng kết quả tool; mỗi claim phải có `[chunk_id]`; thiếu dữ liệu phải nói rõ.
@@ -152,7 +129,6 @@ Mỗi câu trả lời in kèm **Nguồn** dạng `[chunk_id] doc — section`. 
    - cite phải nằm trong tập chunk tool *thực sự* trả về trong phiên  
    - claim phải được chunk đỡ (n-gram support)  
    - cite sai / claim không đỡ → `invalid_citations` / `unsupported_claims` (flag, không im lặng xóa)
-4. **Eval faithfulness** — LLM-judge (`--judge`) + refusal accuracy trên unanswerable.
 
 **Giới hạn trung thực:** support check n-gram là proxy rẻ, không phải NLI — diễn đạt lại bằng từ khác có thể bị flag oan. Nâng cấp tự nhiên: NLI hoặc LLM-judge từng claim.
 
@@ -179,9 +155,9 @@ câu hỏi
 
 **Vì sao hybrid + RRF?** Vector bắt nghĩa; FTS bắt số/tên riêng chính xác. RRF chỉ cần hạng, không cần chuẩn hóa cosine vs BM25-like.
 
-**Vì sao agent + mode stuff?** Agent tự reformulate / multi-hop; stuff rẻ hơn và dùng khi model không tool-call. Eval so hai mode bằng số, không cảm tính.
+**Vì sao agent + mode stuff?** Agent tự reformulate / multi-hop; stuff rẻ hơn và dùng khi model không tool-call.
 
-**Framework boundary:** LangChain/LangGraph lo cơ chế (agent loop, tool schema, splitter). **Retrieval + RRF + citation verify + eval là code tự viết** — phần thể hiện năng lực. Không dùng LangSmith; log JSONL tự thu (`logs/`).
+**Framework boundary:** LangChain/LangGraph lo cơ chế (agent loop, tool schema, splitter). **Retrieval + RRF + citation verify là code tự viết** — phần thể hiện năng lực. Không dùng LangSmith; log JSONL tự thu (`logs/`).
 
 Cấu trúc code (layered backend):
 
@@ -194,8 +170,6 @@ src/chakra_rag/
   observability/ # telemetry JSONL
   service/       # RagService composition root
   interfaces/    # cli + fastapi
-scripts/run_eval.py
-eval/golden.json
 tests/test_smoke.py
 ```
 
@@ -227,7 +201,7 @@ cd ui && npm install && npm run dev
 - LLM qua endpoint OpenAI-compatible; người chấm cần 1 key hoặc Ollama.
 - Đầu vào chính cho take-home: `.md` / `.txt` sạch (không OCR PDF scan / bảng phức tạp trong phạm vi 48h).
 - Mode `agent` cần model function-calling; không thì `--mode stuff`.
-- `data/docs` phục vụ **CLI demo + golden eval**. UI live index = những gì đã có trong DB sau upload/`ingest` của người dùng.
+- `data/docs` phục vụ **CLI demo**. UI live index = những gì đã có trong DB sau upload/`ingest` của người dùng.
 - Embedding chạy local CPU; lần đầu tải model chậm hơn.
 
 ---
@@ -238,7 +212,6 @@ cd ui && npm install && npm run dev
 - Support check nâng NLI / LLM-judge từng claim
 - Semantic chunking + parent-document retrieval
 - Agent đa tool: `list_documents`, `read_chunk`
-- Golden set lớn hơn + eval trong CI
 - Retry/backoff khi LLM gateway flaky
 
 ---
@@ -252,11 +225,9 @@ chakra_rag/
 ├── requirements.txt          # dependency pin
 ├── .env.example
 ├── src/chakra_rag/           # backend
-├── eval/golden.json          # bộ câu đánh giá
-├── scripts/run_eval.py
 ├── tests/test_smoke.py
 ├── data/
-│   ├── docs/                 # corpus seed (CLI + eval)
+│   ├── docs/                 # corpus seed (CLI demo)
 │   ├── uploads/              # file upload UI (tham chiếu)
 │   └── cau_hoi_mau.txt       # gợi ý câu hỏi demo UI (không ingest)
 └── ui/                       # frontend tuỳ chọn

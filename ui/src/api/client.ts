@@ -1,6 +1,15 @@
 /** Gọi API backend qua dev proxy /api (xem vite.config.ts). */
 
-import type { AskResponse, ChunkDetail, FileEntry, IngestProgress, StreamEvent } from "./types";
+import type {
+  AskResponse,
+  ChunkDetail,
+  ConversationDetail,
+  ConversationSummary,
+  FileChunksResponse,
+  FileEntry,
+  IngestProgress,
+  StreamEvent,
+} from "./types";
 
 const BASE = "/api";
 
@@ -29,15 +38,76 @@ export async function uploadFile(file: File): Promise<{ file_id: string }> {
   );
 }
 
+export async function reingestFile(
+  fileId: string
+): Promise<{ file_id: string; name: string; status: string }> {
+  return handle<{ file_id: string; name: string; status: string }>(
+    await fetch(`${BASE}/files/${encodeURIComponent(fileId)}/reingest`, {
+      method: "POST",
+    })
+  );
+}
+
+export async function deleteFile(fileId: string): Promise<{
+  file_id: string;
+  name: string;
+  chunks_removed: number;
+  disk_removed: boolean;
+}> {
+  return handle(
+    await fetch(`${BASE}/files/${encodeURIComponent(fileId)}`, {
+      method: "DELETE",
+    })
+  );
+}
+
+export async function listConversations(): Promise<ConversationSummary[]> {
+  const data = await handle<{ conversations: ConversationSummary[] }>(
+    await fetch(`${BASE}/conversations`)
+  );
+  return data.conversations;
+}
+
+export async function createConversation(
+  title = "Hội thoại mới"
+): Promise<ConversationSummary> {
+  return handle<ConversationSummary>(
+    await fetch(`${BASE}/conversations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    })
+  );
+}
+
+export async function getConversation(id: string): Promise<ConversationDetail> {
+  return handle<ConversationDetail>(
+    await fetch(`${BASE}/conversations/${encodeURIComponent(id)}`)
+  );
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  await handle<{ ok: boolean }>(
+    await fetch(`${BASE}/conversations/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    })
+  );
+}
+
 export async function ask(
   question: string,
-  mode: "agent" | "stuff" = "agent"
+  mode: "agent" | "stuff" = "agent",
+  conversationId?: string | null
 ): Promise<AskResponse> {
   return handle<AskResponse>(
     await fetch(`${BASE}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, mode }),
+      body: JSON.stringify({
+        question,
+        mode,
+        conversation_id: conversationId ?? undefined,
+      }),
     })
   );
 }
@@ -55,8 +125,10 @@ const ASK_INACTIVITY_MS = 100_000;
 export async function askStream(
   question: string,
   onEvent: (ev: StreamEvent) => void,
-  mode: "agent" | "stuff" = "agent"
+  options?: { mode?: "agent" | "stuff"; conversationId?: string | null }
 ): Promise<void> {
+  const mode = options?.mode ?? "agent";
+  const conversationId = options?.conversationId ?? undefined;
   const controller = new AbortController();
   let timer: number | undefined;
   const armWatchdog = () => {
@@ -68,7 +140,11 @@ export async function askStream(
     const res = await fetch(`${BASE}/ask/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, mode }),
+      body: JSON.stringify({
+        question,
+        mode,
+        conversation_id: conversationId,
+      }),
       signal: controller.signal,
     });
     if (!res.ok) {
@@ -111,5 +187,12 @@ export async function askStream(
 export async function getChunk(chunkId: string): Promise<ChunkDetail> {
   return handle<ChunkDetail>(
     await fetch(`${BASE}/chunks/${encodeURIComponent(chunkId)}`)
+  );
+}
+
+/** Chunks đã ingest của 1 file (DocumentDrawer). */
+export async function getFileChunks(fileId: string): Promise<FileChunksResponse> {
+  return handle<FileChunksResponse>(
+    await fetch(`${BASE}/files/${encodeURIComponent(fileId)}/chunks`)
   );
 }

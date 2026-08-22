@@ -45,6 +45,28 @@ export interface AskResponse {
   reasoning: string;
   low_confidence: boolean;
   latency_ms: number;
+  conversation_id?: string | null;
+}
+
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count?: number;
+}
+
+export interface ConversationMessage {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant";
+  content: string;
+  payload: AskResponse | null;
+  created_at: string;
+}
+
+export interface ConversationDetail extends ConversationSummary {
+  messages: ConversationMessage[];
 }
 
 export interface ChunkDetail {
@@ -55,6 +77,15 @@ export interface ChunkDetail {
   text: string;
   char_start: number;
   char_end: number;
+}
+
+export interface FileChunksResponse {
+  file: FileEntry;
+  chunks: ChunkDetail[];
+  chunk_count: number;
+  full_text?: string;
+  full_text_chars?: number;
+  full_text_error?: string | null;
 }
 
 /** Events từ POST /ask/stream (SSE). */

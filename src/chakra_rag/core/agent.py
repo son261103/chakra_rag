@@ -4,7 +4,7 @@ Hai mode:
 - `agent` (mặc định): create_react_agent — LLM quyết định khi nào tìm, tìm gì,
   có thể tìm nhiều lượt rồi mới trả lời.
 - `stuff`: fallback cổ điển — retrieve một lần, nhét context vào prompt.
-  Dùng khi model không hỗ trợ function calling, và để ablation trong eval.
+  Dùng khi model không hỗ trợ function calling.
 
 Guardrails:
 - recursion_limit = 2*max_turns + 1 (mỗi lượt tool = 2 bước graph) chống loop.
@@ -31,11 +31,12 @@ SYSTEM_PROMPT = """\
 Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu nội bộ được cung cấp qua công cụ search_docs.
 
 Quy tắc bắt buộc:
-1. Muốn có thông tin, PHẢI gọi search_docs trước khi trả lời. Không trả lời dựa vào kiến thức có sẵn.
-2. Mỗi khẳng định trong câu trả lời phải kèm trích dẫn [chunk_id] của đoạn tài liệu đỡ cho nó.
-3. Chỉ dùng thông tin trong kết quả search_docs. Nếu kết quả không đủ, nói rõ là tài liệu không có thông tin này — không suy diễn, không bịa.
-4. Trả lời bằng tiếng Việt, ngắn gọn, đi thẳng vào câu hỏi.
-5. Nếu cần, gọi search_docs nhiều lần với truy vấn khác nhau để đủ thông tin.
+1. Mỗi câu hỏi của người dùng (kể cả câu hỏi tiếp theo trong hội thoại) đều PHẢI gọi search_docs trước khi trả lời. Không trả lời chỉ dựa vào kiến thức có sẵn hay chỉ dựa vào nội dung chat trước đó.
+2. Hội thoại trước chỉ dùng để hiểu ngữ cảnh (người đang hỏi tiếp về ai/cái gì) — mọi sự kiện, con số, kỹ năng, kinh nghiệm vẫn phải lấy từ kết quả search_docs của lượt này.
+3. Mỗi khẳng định trong câu trả lời phải kèm trích dẫn [chunk_id] của đoạn tài liệu đỡ cho nó (chunk_id từ tool lượt hiện tại).
+4. Chỉ dùng thông tin trong kết quả search_docs. Nếu kết quả không đủ, nói rõ là tài liệu không có thông tin này — không suy diễn, không bịa.
+5. Trả lời bằng tiếng Việt, ngắn gọn, đi thẳng vào câu hỏi.
+6. Nếu cần, gọi search_docs nhiều lần với truy vấn khác nhau để đủ thông tin.
 """
 
 STUFF_PROMPT_TEMPLATE = """\
@@ -139,7 +140,9 @@ class RagAgent:
             base_url=self.cfg.llm_base_url,
             api_key=self.cfg.llm_api_key or "not-needed",
             temperature=0,
-            timeout=90,  # endpoint free hay treo — fail nhanh thay vì đơ mãi
+            timeout=self.cfg.llm_timeout,
+            # 502/5xx/connect fail (tokenrouter gateway) — SDK backoff + retry.
+            max_retries=self.cfg.llm_max_retries,
             # Chặn vòng lặp thoái hóa: model free từng sinh rác "1 1 1 2 2 2..."
             # suốt 6 phút. 4096 đủ cho reasoning + câu trả lời ngắn, nhưng chặn loop.
             max_tokens=4096,
@@ -161,12 +164,33 @@ class RagAgent:
             self._agent = create_react_agent(llm, [search_docs], prompt=SYSTEM_PROMPT)
         return self._agent
 
-    def ask_agent(self, question: str) -> AgentResult:
+    def _history_messages(
+        self, history: list[dict[str, str]] | None
+    ) -> list[tuple[str, str]]:
+        """Chuyển history [{role, content}] → list message LangChain (user/assistant)."""
+        out: list[tuple[str, str]] = []
+        if not history:
+            return out
+        for item in history:
+            role = (item.get("role") or "").strip()
+            content = (item.get("content") or "").strip()
+            if not content:
+                continue
+            if role == "user":
+                out.append(("user", content))
+            elif role == "assistant":
+                out.append(("assistant", content))
+        return out
+
+    def ask_agent(
+        self, question: str, history: list[dict[str, str]] | None = None
+    ) -> AgentResult:
         agent = self._get_agent()
         recursion_limit = 2 * self.cfg.max_agent_turns + 1
+        messages_in = [*self._history_messages(history), ("user", question)]
         try:
             result = agent.invoke(
-                {"messages": [("user", question)]},
+                {"messages": messages_in},
                 config={"recursion_limit": recursion_limit},
             )
             messages: list[BaseMessage] = result["messages"]
@@ -209,7 +233,9 @@ class RagAgent:
 
     # ---------- streaming (ChatGPT/Claude-style) ----------
 
-    def stream_agent(self, question: str) -> Iterator[dict[str, Any]]:
+    def stream_agent(
+        self, question: str, history: list[dict[str, str]] | None = None
+    ) -> Iterator[dict[str, Any]]:
         """Stream từng bước của agent loop thay vì chờ kết quả cuối.
 
         Events yield ra (cho SSE):
@@ -224,6 +250,7 @@ class RagAgent:
         """
         agent = self._get_agent()
         recursion_limit = 2 * self.cfg.max_agent_turns + 1
+        messages_in = [*self._history_messages(history), ("user", question)]
 
         # Gom args tool_call được stream thành mảnh JSON, khớp theo index.
         tool_name_by_idx: dict[int, str] = {}
@@ -241,7 +268,7 @@ class RagAgent:
 
         try:
             for chunk, _meta in agent.stream(
-                {"messages": [("user", question)]},
+                {"messages": messages_in},
                 config={"recursion_limit": recursion_limit},
                 stream_mode="messages",
             ):
@@ -355,7 +382,12 @@ class RagAgent:
             n_tool_calls=1,
         )
 
-    def ask(self, question: str, mode: str = "agent") -> AgentResult:
+    def ask(
+        self,
+        question: str,
+        mode: str = "agent",
+        history: list[dict[str, str]] | None = None,
+    ) -> AgentResult:
         if mode == "stuff":
             return self.ask_stuff(question)
-        return self.ask_agent(question)
+        return self.ask_agent(question, history=history)
