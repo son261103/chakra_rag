@@ -16,7 +16,6 @@ import Composer from "../components/chat/Composer";
 import SourceDrawer from "../components/sources/SourceDrawer";
 import DocumentDrawer from "../components/sources/DocumentDrawer";
 import FileDrawer from "../components/files/FileDrawer";
-import TracePanel, { type PanelTrace } from "../components/trace/TracePanel";
 
 export interface QAEntry {
   question: string;
@@ -85,9 +84,6 @@ export default function App() {
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
   const [inspectFile, setInspectFile] = useState<FileEntry | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
-  // Panel phải hiển thị lượt tra cứu + nguồn. selIdx = null nghĩa là "theo tin mới nhất".
-  const [traceOpen, setTraceOpen] = useState(false);
-  const [selIdx, setSelIdx] = useState<number | null>(null);
   const [askError, setAskError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   // Thời điểm bắt đầu suy luận — để tính "Đã suy luận trong Xs".
@@ -112,8 +108,6 @@ export default function App() {
     setHistory(messagesToHistory(detail.messages));
     setStreaming(null);
     setAskError(null);
-    setTraceOpen(false);
-    setSelIdx(null);
   }, []);
 
   // Mount: load danh sách hội thoại; nếu có thì mở cái mới nhất.
@@ -151,8 +145,6 @@ export default function App() {
       setHistory([]);
       setStreaming(null);
       setAskError(null);
-      setTraceOpen(false);
-      setSelIdx(null);
       setConversations((prev) => [conv, ...prev.filter((c) => c.id !== conv.id)]);
     } catch (e) {
       setAskError(String(e));
@@ -194,9 +186,6 @@ export default function App() {
     thinkStartRef.current = null;
     setStreaming(EMPTY_STREAM(question));
     setAsking(true);
-    // Mở panel phải để người dùng thấy lượt tra cứu đang chạy; theo tin mới nhất.
-    setTraceOpen(true);
-    setSelIdx(null);
 
     let conversationId: string;
     try {
@@ -312,30 +301,8 @@ export default function App() {
 
   const error = ingestError ?? askError;
 
-  // Dữ liệu cho panel phải: khi đang stream thì hiện lượt tra cứu live,
-  // ngược lại hiện của tin nhắn được chọn (mặc định tin mới nhất).
-  const panelData: PanelTrace | null = (() => {
-    if (streaming) {
-      return {
-        question: streaming.question,
-        traces: streaming.toolCalls,
-        citations: [],
-        live: true,
-      };
-    }
-    const idx = selIdx ?? history.length - 1;
-    const entry = idx >= 0 ? history[idx] : null;
-    if (!entry) return null;
-    return {
-      question: entry.question,
-      traces: entry.response.search_trace.map((trace) => ({ trace, running: false })),
-      citations: entry.response.citations,
-      live: false,
-    };
-  })();
-
   return (
-    <div className={`layout ${traceOpen ? "trace-open" : ""}`}>
+    <div className="layout">
       <Sidebar
         conversations={conversations}
         activeConversationId={activeConversationId}
@@ -371,14 +338,9 @@ export default function App() {
             <ChatMessage
               key={`${entry.question}-${i}`}
               entry={entry}
-              selected={!streaming && (selIdx ?? history.length - 1) === i}
               onCitationClick={(id) => {
                 setInspectFile(null);
                 setSelectedChunkId(id);
-              }}
-              onOpenTrace={() => {
-                setSelIdx(i);
-                setTraceOpen(true);
               }}
             />
           ))}
@@ -391,16 +353,6 @@ export default function App() {
 
         <Composer onAsk={handleAsk} disabled={!ready || asking} asking={asking} ready={ready} />
       </main>
-
-      <TracePanel
-        open={traceOpen}
-        onClose={() => setTraceOpen(false)}
-        data={panelData}
-        onCitationClick={(id) => {
-          setInspectFile(null);
-          setSelectedChunkId(id);
-        }}
-      />
 
       <SourceDrawer chunkId={selectedChunkId} onClose={() => setSelectedChunkId(null)} />
       <DocumentDrawer file={inspectFile} onClose={() => setInspectFile(null)} />

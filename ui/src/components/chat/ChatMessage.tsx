@@ -1,26 +1,28 @@
-import { AlertTriangle, FileText, Search, Sparkles, XCircle } from "lucide-react";
+import { AlertTriangle, Sparkles, XCircle } from "lucide-react";
 import type { QAEntry } from "../../app/App";
 import ThinkingBlock from "./ThinkingBlock";
+import ToolCallBlock from "./ToolCallBlock";
 import MarkdownAnswer from "./MarkdownAnswer";
+import SourceCard from "../sources/SourceCard";
 
 interface Props {
   entry: QAEntry;
-  /** true khi tin nhắn này đang được chọn để hiện trace bên panel phải. */
-  selected: boolean;
   onCitationClick: (chunkId: string) => void;
-  /** Mở panel phải xem lượt tra cứu + nguồn của tin nhắn này. */
-  onOpenTrace: () => void;
 }
 
-/** Một cặp hỏi–trả lời đã hoàn tất. Tool call + nguồn đã chuyển sang panel phải. */
-export default function ChatMessage({ entry, selected, onCitationClick, onOpenTrace }: Props) {
+/** Một cặp hỏi–trả lời hoàn chỉnh: Tool call + trích dẫn nằm trực tiếp trong tin nhắn. */
+export default function ChatMessage({ entry, onCitationClick }: Props) {
   const { question, response } = entry;
   const citationIndex = new Map<string, number>();
   response.citations.forEach((c, i) => citationIndex.set(c.chunk_id, i + 1));
 
   const nTraces = response.search_trace.length;
   const nSources = response.citations.length;
-  const hasTrace = nTraces > 0 || nSources > 0;
+
+  const latencyDisplay =
+    response.latency_ms >= 1000
+      ? `${(response.latency_ms / 1000).toFixed(1)}s`
+      : `${response.latency_ms}ms`;
 
   return (
     <div className="message-pair">
@@ -35,6 +37,20 @@ export default function ChatMessage({ entry, selected, onCitationClick, onOpenTr
         <div className="assistant-content">
           {response.reasoning && (
             <ThinkingBlock text={response.reasoning} active={false} durationMs={response.latency_ms} />
+          )}
+
+          {response.search_trace.length > 0 && (
+            <div className="tool-trace-group">
+              {response.search_trace.map((t, i) => (
+                <ToolCallBlock
+                  key={i}
+                  index={i + 1}
+                  trace={t}
+                  running={false}
+                  onCitationClick={onCitationClick}
+                />
+              ))}
+            </div>
           )}
 
           <MarkdownAnswer
@@ -67,6 +83,24 @@ export default function ChatMessage({ entry, selected, onCitationClick, onOpenTr
             </div>
           )}
 
+          {nSources > 0 && (
+            <div className="sources-container">
+              <div className="sources-title">
+                Nguồn trích dẫn ({nSources})
+              </div>
+              <div className="sources-grid">
+                {response.citations.map((c, i) => (
+                  <SourceCard
+                    key={c.chunk_id}
+                    index={i + 1}
+                    citation={c}
+                    onClick={() => onCitationClick(c.chunk_id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="message-meta">
             <span>
               {response.mode === "agent"
@@ -74,26 +108,12 @@ export default function ChatMessage({ entry, selected, onCitationClick, onOpenTr
                   ? `Agent · ${nTraces} lượt tra cứu`
                   : "Agent"
                 : "Retrieve trực tiếp"}
-              {response.latency_ms > 0 &&
-                ` · ${response.latency_ms >= 1000 ? `${(response.latency_ms / 1000).toFixed(1)}s` : `${response.latency_ms}ms`}`}
+              {response.latency_ms > 0 && ` · ${latencyDisplay}`}
             </span>
-            {hasTrace && (
-              <button
-                type="button"
-                className={`trace-chip ${selected ? "active" : ""}`}
-                onClick={onOpenTrace}
-                title="Xem chi tiết lượt tra cứu và nguồn"
-              >
-                <Search size={12} />
-                <span>{nTraces} lượt</span>
-                <span>·</span>
-                <FileText size={12} />
-                <span>{nSources} nguồn</span>
-              </button>
-            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
+

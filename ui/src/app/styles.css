@@ -11,10 +11,7 @@
   grid-template-columns: 280px minmax(0, 1fr);
 }
 
-/* Khi mở panel tra cứu bên phải: thêm cột 380px trên màn hình rộng. */
-.layout.trace-open {
-  grid-template-columns: 280px minmax(0, 1fr) 380px;
-}
+
 
 /* ================= Sidebar ================= */
 
@@ -693,16 +690,25 @@
   @apply border border-red/40 bg-red/10 text-red;
 }
 
-/* Sources list */
+/* Tool trace group inside chat */
 
-.sources-list {
-  @apply flex flex-col gap-2.5;
+.tool-trace-group {
+  @apply flex flex-col gap-2;
+}
+
+/* Sources list / grid inside chat */
+
+.sources-container {
+  @apply mt-2 flex flex-col gap-2 pt-2.5 border-t border-border/70;
 }
 
 .sources-title {
-  @apply text-xs uppercase text-muted;
+  @apply flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted tracking-wider;
   font-family: var(--font-mono);
-  letter-spacing: 0.05em;
+}
+
+.sources-grid {
+  @apply grid grid-cols-1 sm:grid-cols-2 gap-2.5;
 }
 
 .source-card {
@@ -1193,20 +1199,6 @@ html.dark .doc-pill.status-queued {
 }
 
 /* ================= Responsive ================= */
-
-/* Màn hình hẹp hơn 1100px: panel tra cứu chuyển thành overlay trượt từ phải,
-   không chiếm cột grid để chat không bị ép quá hẹp. */
-@media (max-width: 1100px) {
-  .layout.trace-open {
-    grid-template-columns: 280px minmax(0, 1fr);
-  }
-
-  .trace-panel {
-    @apply fixed bottom-0 right-0 top-0 z-40 h-screen w-[min(380px,92vw)];
-    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.12);
-    animation: slide-in 0.2s ease;
-  }
-}
 
 @media (max-width: 860px) {
   .layout {
