@@ -39,6 +39,8 @@
   --green: #16a34a;
   --amber: #d97706;
   --red: #dc2626;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.16);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
   --font-sans: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -55,10 +57,16 @@ html.dark {
   --accent-hover: #6fafa0;
   --accent-soft: rgba(155, 206, 193, 0.12);
   --accent-contrast: #070a0a;
+  --scrollbar-thumb: rgba(155, 206, 193, 0.22);
+  --scrollbar-thumb-hover: rgba(155, 206, 193, 0.45);
 }
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 html,
@@ -73,6 +81,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Nhãn mono kỹ thuật đặc trưng của portfolio: uppercase + tracking. */
@@ -81,26 +91,44 @@ body {
   letter-spacing: -0.02em;
 }
 
-/* Scrollbar gọn theo theme */
-.side-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+/* ===== Custom sleek scrollbars =====
+   Tự động áp dụng cho toàn bộ app để thanh scroll khớp hoàn hảo với vibe tối/sáng.
+   Chromium/WebKit dùng ::-webkit-scrollbar (bo tròn mượt mà, track trong suốt).
+   Firefox dùng scrollbar-width & scrollbar-color. */
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
 }
 
-.side-scroll::-webkit-scrollbar {
+::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
-.side-scroll::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: transparent;
-  margin: 4px 0;
 }
 
-.side-scroll::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 999px;
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s ease;
 }
 
-.side-scroll::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
 }
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.side-scroll {
+  /* class helper giữ tương thích */
+}
+

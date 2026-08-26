@@ -76,8 +76,6 @@ export default function Sidebar({
           )}
         </ul>
       </section>
-
-      <div className="sidebar-footer">sqlite-vec · FTS5 · LangGraph agent</div>
     </aside>
   );
 }

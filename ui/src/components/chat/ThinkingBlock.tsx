@@ -23,9 +23,9 @@ export default function ThinkingBlock({ text, active, durationMs }: Props) {
   const seconds = durationMs !== null ? Math.max(1, Math.round(durationMs / 1000)) : null;
 
   return (
-    <div className={`thinking-block ${active ? "active" : ""}`}>
-      <button className="thinking-header" onClick={() => setOpen((o) => !o)}>
-        <ChevronRight size={14} className={`thinking-chevron ${open ? "open" : ""}`} />
+    <div className={`thinking-block ${open ? "open" : ""} ${active ? "active" : ""}`}>
+      <button type="button" className="thinking-header" onClick={() => setOpen((o) => !o)}>
+        <ChevronRight size={13} className={`thinking-chevron ${open ? "open" : ""}`} />
         {active ? (
           <>
             <span className="thinking-spinner" />

@@ -100,7 +100,7 @@ function splitCitations(
           type="button"
           className="cite-chip"
           onClick={() => onCitationClick(id)}
-          title={id}
+          title={`Xem nguồn [${num}]: ${id}`}
         >
           [{num}]
         </button>
@@ -123,6 +123,13 @@ function splitCitations(
       );
     }
     last = match.index + match[0].length;
+
+    // Chuẩn hóa: loại bỏ khoảng trắng vô duyên giữa citation chip và dấu câu (vd: "[1] ." -> "[1].")
+    const remaining = text.slice(last);
+    const punctMatch = remaining.match(/^(\s+)([.,;:!?])/);
+    if (punctMatch) {
+      last += punctMatch[1].length;
+    }
   }
   if (last < text.length) parts.push(text.slice(last));
   if (parts.length === 0) return text;

@@ -69,17 +69,26 @@ export default function ChatMessage({ entry, selected, onCitationClick, onOpenTr
 
           <div className="message-meta">
             <span>
-              {response.mode === "agent" ? `Agent · ${nTraces} lượt tra cứu` : "Retrieve trực tiếp"} ·{" "}
-              {response.latency_ms}ms
+              {response.mode === "agent"
+                ? nTraces > 0
+                  ? `Agent · ${nTraces} lượt tra cứu`
+                  : "Agent"
+                : "Retrieve trực tiếp"}
+              {response.latency_ms > 0 &&
+                ` · ${response.latency_ms >= 1000 ? `${(response.latency_ms / 1000).toFixed(1)}s` : `${response.latency_ms}ms`}`}
             </span>
             {hasTrace && (
               <button
+                type="button"
                 className={`trace-chip ${selected ? "active" : ""}`}
                 onClick={onOpenTrace}
-                title="Xem lượt tra cứu và nguồn"
+                title="Xem chi tiết lượt tra cứu và nguồn"
               >
-                <Search size={12} /> {nTraces}
-                <FileText size={12} /> {nSources}
+                <Search size={12} />
+                <span>{nTraces} lượt</span>
+                <span>·</span>
+                <FileText size={12} />
+                <span>{nSources} nguồn</span>
               </button>
             )}
           </div>

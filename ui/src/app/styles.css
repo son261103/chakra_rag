@@ -11,9 +11,9 @@
   grid-template-columns: 280px minmax(0, 1fr);
 }
 
-/* Khi mở panel tra cứu bên phải: thêm cột 360px trên màn hình rộng. */
+/* Khi mở panel tra cứu bên phải: thêm cột 380px trên màn hình rộng. */
 .layout.trace-open {
-  grid-template-columns: 280px minmax(0, 1fr) 360px;
+  grid-template-columns: 280px minmax(0, 1fr) 380px;
 }
 
 /* ================= Sidebar ================= */
@@ -181,7 +181,7 @@
 }
 
 .chat-item {
-  @apply flex items-center gap-0.5 rounded-lg;
+  @apply flex items-center gap-0.5 rounded-lg transition-colors;
 }
 
 .chat-item:hover {
@@ -204,15 +204,15 @@
 }
 
 .chat-item-delete {
-  @apply mr-1 h-7 w-7 shrink-0 cursor-pointer rounded-md border-none bg-transparent text-base leading-none text-muted;
+  @apply mr-1 h-7 w-7 shrink-0 cursor-pointer rounded-md border-none bg-transparent text-base leading-none text-muted transition-colors;
 }
 
 .chat-item-delete:hover {
-  @apply bg-bg-elevated text-text;
+  @apply bg-bg-card text-red;
 }
 
 .file-item {
-  @apply flex items-center gap-0.5 rounded-lg p-[2px_4px_2px_2px] text-[12.5px];
+  @apply flex items-center gap-1 rounded-lg p-[3px_4px] text-[13px] transition-colors;
 }
 
 .file-item:hover {
@@ -324,38 +324,37 @@
 }
 
 .chat-scroll {
-  @apply flex-1 overflow-y-auto p-[16px_0_8px];
+  @apply flex-1 overflow-y-auto p-[20px_0_12px];
 }
 
 /* Empty state */
 
 .empty-state {
-  @apply mx-auto mt-[12vh] w-full max-w-[min(56rem,calc(100%-3rem))] px-4 text-center;
+  @apply mx-auto mt-[8vh] w-full max-w-[min(68rem,calc(100%-3rem))] px-4 sm:px-6 text-center;
 }
 
 .empty-logo {
-  @apply mx-auto mb-4 grid size-[52px] place-items-center rounded-2xl bg-accent text-[26px] text-accent-contrast;
+  @apply mx-auto mb-4 grid size-[54px] place-items-center rounded-2xl bg-accent text-[26px] text-accent-contrast shadow-sm;
 }
 
 .empty-state h2 {
-  @apply m-0 mb-1.5 text-2xl;
+  @apply m-0 mb-2 text-2xl font-bold tracking-tight;
 }
 
 .empty-state p {
-  @apply m-0 mb-6 text-muted;
+  @apply m-0 mb-6 text-[14.5px] leading-relaxed text-muted max-w-[620px] mx-auto;
 }
 
 .suggestions {
-  @apply grid grid-cols-2 gap-2.5;
+  @apply grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-[820px] mx-auto;
 }
 
 .suggestion-chip {
-  @apply cursor-pointer rounded-xl border border-border bg-bg-soft p-3 text-left text-[13px] text-text transition;
-  padding: 12px 14px;
+  @apply cursor-pointer rounded-xl border border-border/80 bg-bg-card/70 p-[12px_16px] text-left text-[13px] text-text transition-all duration-150;
 }
 
 .suggestion-chip:hover:not(:disabled) {
-  @apply bg-bg-elevated;
+  @apply bg-bg-elevated border-accent/40 shadow-xs translate-y-[-1px];
 }
 
 .suggestion-chip:disabled {
@@ -365,7 +364,7 @@
 /* Messages */
 
 .message-pair {
-  @apply mx-auto flex w-full max-w-[min(56rem,calc(100%-3rem))] flex-col gap-3 px-4 py-2;
+  @apply mx-auto flex w-full max-w-[min(70rem,calc(100%-3rem))] flex-col gap-3.5 px-4 sm:px-6 md:px-8 py-2.5;
 }
 
 .user-row {
@@ -373,36 +372,41 @@
 }
 
 .user-bubble {
-  @apply max-w-[75%] whitespace-pre-wrap rounded-2xl p-2.5 text-[14.5px] leading-relaxed;
+  @apply max-w-[85%] whitespace-pre-wrap text-[14px] leading-relaxed text-text;
   background: var(--accent-soft);
-  border-radius: 18px;
+  border: 1px solid rgba(155, 206, 193, 0.18);
+  border-radius: 18px 18px 4px 18px;
   padding: 10px 16px;
 }
 
 .assistant-row {
-  @apply flex items-start gap-2.5;
+  @apply flex items-start gap-3;
 }
 
 .avatar {
-  @apply grid size-[30px] shrink-0 place-items-center rounded-lg bg-accent text-[15px] text-accent-contrast;
+  @apply grid size-[32px] shrink-0 place-items-center rounded-xl bg-accent text-[15px] text-accent-contrast shadow-sm mt-0.5;
 }
 
 .assistant-content {
   @apply flex min-w-0 flex-1 flex-col gap-3;
 }
 
-/* Reasoning / thinking block — card kiểu ChatGPT */
+/* Reasoning / thinking block — gọn gàng, pill thu nhỏ khi đóng */
 
 .thinking-block {
-  @apply rounded-xl border border-border bg-bg-soft;
+  @apply w-fit max-w-full rounded-xl border border-border/80 bg-bg-soft/70 transition-all duration-200;
+}
+
+.thinking-block.open {
+  @apply w-full bg-bg-soft/90;
 }
 
 .thinking-header {
-  @apply flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-2.5 text-left text-[13px] font-medium text-muted transition-colors;
+  @apply flex cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left text-[12.5px] font-medium text-muted transition-colors rounded-xl;
 }
 
 .thinking-header:hover {
-  @apply text-text;
+  @apply text-text bg-bg-elevated/60;
 }
 
 .thinking-chevron {
@@ -436,7 +440,7 @@
 }
 
 .thinking-text {
-  @apply max-h-[300px] overflow-y-auto whitespace-pre-wrap border-t border-border px-3 py-2.5 text-[13px] leading-relaxed text-muted;
+  @apply max-h-[300px] overflow-y-auto whitespace-pre-wrap border-t border-border/70 p-3 text-[12.5px] leading-relaxed text-muted/90 font-mono;
 }
 
 .thinking-spinner,
@@ -452,18 +456,22 @@
   }
 }
 
-/* Tool call block — card kiểu ChatGPT */
+/* Tool call block — card kiểu ChatGPT/Perplexity */
 
 .tool-block {
-  @apply rounded-xl border border-border bg-bg-soft text-[13px];
+  @apply rounded-xl border border-border/80 bg-bg-card/70 text-[13px] transition-all;
+}
+
+.tool-block:hover {
+  @apply border-border;
 }
 
 .tool-header {
-  @apply flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-2.5 text-left text-[13px] text-text transition-colors;
+  @apply flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-2.5 text-left text-[13px] text-text transition-colors rounded-xl;
 }
 
 .tool-header:hover:not(:disabled) {
-  @apply bg-bg-elevated;
+  @apply bg-bg-elevated/60;
 }
 
 .tool-header:disabled {
@@ -483,15 +491,15 @@
 }
 
 .tool-title {
-  @apply font-medium;
+  @apply font-medium text-text text-[12.5px];
 }
 
 .tool-query-inline {
-  @apply min-w-0 flex-1 truncate text-muted;
+  @apply min-w-0 flex-1 truncate text-xs text-muted font-mono;
 }
 
 .tool-summary {
-  @apply ml-auto shrink-0 whitespace-nowrap text-xs text-muted;
+  @apply ml-auto shrink-0 whitespace-nowrap rounded-full bg-bg-elevated px-2 py-0.5 text-[11px] text-muted;
   font-family: var(--font-mono);
 }
 
@@ -510,21 +518,16 @@
 }
 
 .tool-results {
-  @apply flex flex-wrap gap-1.5 border-t border-border px-3 py-2.5;
+  @apply flex flex-wrap gap-1.5 border-t border-border/70 p-2.5 bg-bg-soft/50;
 }
 
 .tool-result-chip {
-  @apply cursor-pointer rounded-md border border-border bg-bg-card px-2 text-[11.5px] text-accent transition-colors;
+  @apply cursor-pointer rounded-md border border-border bg-bg-card px-2.5 py-1 text-[11px] text-accent transition-all hover:bg-accent-soft hover:border-accent/40;
   font-family: var(--font-mono);
-  padding: 3px 8px;
-}
-
-.tool-result-chip:hover {
-  @apply bg-accent-soft;
 }
 
 .tool-no-result {
-  @apply text-xs text-muted;
+  @apply text-xs text-muted p-1;
 }
 
 /* Streaming cursor */
@@ -654,23 +657,21 @@
 }
 
 .cite-chip {
-  @apply mx-0.5 inline-block cursor-pointer rounded-[5px] border-none bg-accent-soft px-1 text-[11.5px] font-semibold text-accent;
+  @apply mx-0.5 inline-flex items-center justify-center cursor-pointer rounded-md border border-accent/30 bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent transition-all leading-none;
   font-family: var(--font-mono);
-  padding: 1px 5px;
   vertical-align: baseline;
 }
 
 .cite-chip:hover {
-  @apply bg-accent-soft;
-  filter: brightness(0.97);
+  @apply border-accent bg-accent/25 scale-105;
 }
 
 .cite-chip.invalid {
-  @apply cursor-not-allowed bg-red/10 text-red;
+  @apply cursor-not-allowed border-red/30 bg-red/10 text-red;
 }
 
 .cite-chip.unknown {
-  @apply cursor-default bg-bg-elevated text-muted;
+  @apply cursor-default border-border bg-bg-elevated text-muted;
 }
 
 /* Warnings */
@@ -695,7 +696,7 @@
 /* Sources list */
 
 .sources-list {
-  @apply mt-0.5 flex flex-col gap-1.5;
+  @apply flex flex-col gap-2.5;
 }
 
 .sources-title {
@@ -705,46 +706,53 @@
 }
 
 .source-card {
-  @apply flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-border bg-bg-soft p-[9px_12px] text-left transition;
+  @apply flex flex-col gap-2 rounded-xl border border-border/80 bg-bg-card p-3 text-left transition-all duration-150 cursor-pointer;
 }
 
 .source-card:hover {
-  @apply bg-bg-elevated;
+  @apply border-accent/40 bg-bg-elevated shadow-xs translate-y-[-1px];
+}
+
+.source-card-header {
+  @apply flex items-center gap-2 min-w-0;
 }
 
 .source-num {
-  @apply grid size-5 shrink-0 place-items-center rounded-md bg-accent text-[11.5px] font-semibold text-accent-contrast;
+  @apply grid size-[22px] shrink-0 place-items-center rounded-md bg-accent-soft text-accent text-[11px] font-mono font-bold;
 }
 
-.source-body {
-  @apply flex min-w-0 flex-col gap-px;
+.source-doc-name {
+  @apply flex min-w-0 flex-1 items-center gap-1.5 text-[12.5px] font-semibold text-text truncate;
 }
 
-.source-doc {
-  @apply text-[12.5px] font-semibold;
+.source-doc-icon {
+  @apply size-3.5 shrink-0 text-muted;
 }
 
-.source-section {
-  @apply text-xs text-muted;
+.source-section-pill {
+  @apply shrink-0 rounded-md bg-bg-elevated px-1.5 py-0.5 text-[10px] font-mono uppercase text-muted max-w-[120px] truncate;
 }
 
 .source-snippet {
-  @apply overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted;
+  @apply m-0 text-[12px] leading-relaxed text-muted;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .message-meta {
-  @apply mt-0.5 flex items-center gap-2 text-[11.5px] text-muted;
+  @apply mt-1 flex items-center justify-between gap-2 text-[11.5px] text-muted;
   font-family: var(--font-mono);
 }
 
 /* Chip mở panel tra cứu — nằm ở cuối dòng meta */
 .trace-chip {
-  @apply ml-auto inline-flex cursor-pointer items-center gap-1 rounded-md border border-border bg-bg-soft px-1.5 py-0.5 text-[11px] text-muted transition;
-  font-family: var(--font-sans);
+  @apply ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-bg-soft px-2.5 py-1 text-[11px] text-muted transition-all font-sans;
 }
 
 .trace-chip:hover {
-  @apply bg-bg-elevated text-text;
+  @apply bg-bg-elevated text-text border-accent/40;
 }
 
 .trace-chip.active {
@@ -796,32 +804,36 @@
 /* Error banner */
 
 .error-banner {
-  @apply mx-auto my-2 w-full rounded-[10px] border border-red/40 bg-red/10 p-[10px_14px] text-[13px] text-red;
-  max-width: min(56rem, calc(100% - 3rem));
+  @apply mx-auto my-2 w-full rounded-xl border border-red/40 bg-red/10 p-[10px_16px] text-[13px] text-red;
+  max-width: min(70rem, calc(100% - 3rem));
 }
 
 .error-banner.small {
-  @apply m-0 p-2 text-xs;
-  padding: 8px 10px;
+  @apply m-0 p-2.5 text-xs rounded-lg;
 }
 
 /* ================= Composer ================= */
 
 .composer-wrap {
-  @apply mx-auto w-full max-w-[min(56rem,calc(100%-3rem))] p-[4px_24px_12px];
+  @apply mx-auto w-full max-w-[min(70rem,calc(100%-3rem))] p-[6px_16px_14px] sm:p-[6px_24px_16px] md:p-[6px_32px_16px];
 }
 
 .composer {
-  @apply flex items-end gap-2 rounded-[24px] border border-border bg-bg-card p-[10px_12px_10px_18px];
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  @apply flex items-end gap-2 rounded-[22px] border border-border/85 bg-bg-card p-[10px_12px_10px_18px] transition-all;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
 html.dark .composer {
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+}
+
+.composer:focus-within {
+  @apply border-accent/60;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 0 3px var(--accent-soft);
 }
 
 .composer textarea {
-  @apply max-h-[160px] flex-1 resize-none border-none bg-transparent p-1 text-[15px] leading-relaxed text-text;
+  @apply max-h-[160px] flex-1 resize-none border-none bg-transparent p-1 text-[14.5px] leading-relaxed text-text;
   font: inherit;
   outline: none;
 }
@@ -831,23 +843,23 @@ html.dark .composer {
 }
 
 .composer textarea::placeholder {
-  @apply text-muted/80;
+  @apply text-muted/70 text-[14px];
 }
 
 .send-btn {
-  @apply grid size-[34px] shrink-0 cursor-pointer place-items-center rounded-full border-none bg-accent text-[17px] text-accent-contrast;
+  @apply grid size-[34px] shrink-0 cursor-pointer place-items-center rounded-full border-none bg-accent text-[17px] text-accent-contrast transition-all shadow-sm;
 }
 
 .send-btn:hover:not(:disabled) {
-  @apply bg-accent-hover;
+  @apply bg-accent-hover scale-105;
 }
 
 .send-btn:disabled {
-  @apply cursor-default bg-bg-elevated;
+  @apply cursor-default opacity-40 bg-bg-elevated scale-100;
 }
 
 .composer-hint {
-  @apply mt-2 text-center text-[11.5px] text-muted;
+  @apply mt-2 text-center text-[11.5px] text-muted/80 flex items-center justify-center gap-1.5;
   font-family: var(--font-mono);
 }
 
@@ -858,37 +870,57 @@ html.dark .composer {
 }
 
 .trace-panel-header {
-  @apply flex shrink-0 items-center justify-between border-b border-border px-3.5 py-3;
+  @apply flex shrink-0 items-center justify-between border-b border-border px-4 py-3 bg-bg-soft/40;
 }
 
 .trace-panel-title {
-  @apply flex items-center gap-2 text-[13.5px] font-semibold tracking-[-0.01em];
+  @apply flex items-center gap-2 text-[13.5px] font-semibold tracking-[-0.01em] text-text;
 }
 
 .trace-panel-title svg {
   @apply text-accent;
 }
 
+.trace-live-badge {
+  @apply ml-1.5 inline-flex items-center rounded-full bg-accent-soft px-2 py-0.5 text-[10.5px] font-mono text-accent animate-pulse;
+}
+
 .trace-panel-body {
   @apply flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3.5;
 }
 
-.trace-question {
-  @apply truncate rounded-lg border border-border bg-bg-card px-3 py-2 text-[13px] text-muted;
+.trace-context-card {
+  @apply flex flex-col gap-1.5 rounded-xl border border-border/80 bg-bg-card p-3 shadow-xs;
+}
+
+.trace-context-kicker {
+  @apply flex items-center gap-1.5 text-[10.5px] font-semibold uppercase text-muted tracking-wider;
+  font-family: var(--font-mono);
+}
+
+.trace-context-question {
+  @apply text-[13px] font-medium leading-snug text-text;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .trace-section {
-  @apply flex flex-col gap-2;
+  @apply flex flex-col gap-2.5;
 }
 
 .trace-section-title {
-  @apply flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted;
+  @apply flex items-center justify-between text-[11px] font-semibold uppercase text-muted tracking-wider pt-1;
   font-family: var(--font-mono);
-  letter-spacing: 0.06em;
+}
+
+.trace-count-badge {
+  @apply inline-flex items-center rounded-full bg-bg-elevated px-2 py-0.5 text-[10px] font-mono text-muted;
 }
 
 .trace-empty {
-  @apply py-10 text-center text-[13px] text-muted;
+  @apply py-10 text-center text-[13px] text-muted leading-relaxed;
 }
 
 /* ================= Source drawer ================= */
@@ -1170,7 +1202,7 @@ html.dark .doc-pill.status-queued {
   }
 
   .trace-panel {
-    @apply fixed bottom-0 right-0 top-0 z-40 h-screen w-[min(360px,92vw)];
+    @apply fixed bottom-0 right-0 top-0 z-40 h-screen w-[min(380px,92vw)];
     box-shadow: -8px 0 30px rgba(0, 0, 0, 0.12);
     animation: slide-in 0.2s ease;
   }

@@ -1,4 +1,4 @@
-import { FileText, PanelRightClose, Search } from "lucide-react";
+import { FileText, MessageSquare, PanelRightClose, Search } from "lucide-react";
 import type { Citation, SearchTraceEntry } from "../../api/types";
 import ToolCallBlock from "../chat/ToolCallBlock";
 import SourceCard from "../sources/SourceCard";
@@ -31,6 +31,7 @@ export default function TracePanel({ open, onClose, data, onCitationClick }: Pro
         <div className="trace-panel-title">
           <Search size={15} />
           <span>Chi tiết tra cứu</span>
+          {data?.live && <span className="trace-live-badge">Live</span>}
         </div>
         <button className="drawer-close" onClick={onClose} title="Đóng panel">
           <PanelRightClose size={16} />
@@ -42,13 +43,24 @@ export default function TracePanel({ open, onClose, data, onCitationClick }: Pro
 
         {data && (
           <>
-            <div className="trace-question" title={data.question}>
-              {data.question}
+            <div className="trace-context-card">
+              <div className="trace-context-kicker">
+                <MessageSquare size={12} />
+                <span>Câu hỏi đang xem</span>
+              </div>
+              <div className="trace-context-question" title={data.question}>
+                {data.question}
+              </div>
             </div>
 
             {data.traces.length > 0 && (
               <div className="trace-section">
-                <div className="trace-section-title">Lượt tra cứu</div>
+                <div className="trace-section-title">
+                  <span className="flex items-center gap-1.5">
+                    <Search size={12} /> Lượt tra cứu
+                  </span>
+                  <span className="trace-count-badge">{data.traces.length}</span>
+                </div>
                 {data.traces.map((tc, i) => (
                   <ToolCallBlock
                     key={i}
@@ -64,7 +76,10 @@ export default function TracePanel({ open, onClose, data, onCitationClick }: Pro
             {data.citations.length > 0 && (
               <div className="trace-section">
                 <div className="trace-section-title">
-                  <FileText size={12} /> Nguồn trích dẫn
+                  <span className="flex items-center gap-1.5">
+                    <FileText size={12} /> Nguồn trích dẫn
+                  </span>
+                  <span className="trace-count-badge">{data.citations.length}</span>
                 </div>
                 <div className="sources-list">
                   {data.citations.map((c, i) => (
@@ -88,3 +103,4 @@ export default function TracePanel({ open, onClose, data, onCitationClick }: Pro
     </aside>
   );
 }
+

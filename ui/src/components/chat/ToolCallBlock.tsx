@@ -22,7 +22,15 @@ export default function ToolCallBlock({ trace, running, onCitationClick }: Props
         <span className="tool-title">
           {running ? "Đang tìm kiếm…" : "Đã tìm kiếm"}
         </span>
-        {!running && <span className="tool-query-inline">"{trace.query}"</span>}
+        {!running && (
+          <span className="tool-query-inline" title={trace.query || "Tra cứu tài liệu"}>
+            {trace.query?.trim() ? (
+              `"${trace.query.trim()}"`
+            ) : (
+              <span className="italic text-muted/70">Tra cứu tài liệu liên quan</span>
+            )}
+          </span>
+        )}
         {running ? (
           <span className="tool-spinner" />
         ) : (
@@ -37,11 +45,19 @@ export default function ToolCallBlock({ trace, running, onCitationClick }: Props
           <div className="tool-body-inner">
             <div className="tool-results">
               {trace.chunk_ids.filter(Boolean).map((cid) => (
-                <button key={cid} className="tool-result-chip" onClick={() => onCitationClick(cid!)}>
+                <button
+                  key={cid}
+                  type="button"
+                  className="tool-result-chip"
+                  onClick={() => onCitationClick(cid!)}
+                  title={`Xem đoạn: ${cid}`}
+                >
                   {cid}
                 </button>
               ))}
-              {trace.n_results === 0 && <span className="tool-no-result">Không tìm thấy kết quả nào</span>}
+              {trace.n_results === 0 && (
+                <span className="tool-no-result">Không tìm thấy kết quả phù hợp</span>
+              )}
             </div>
           </div>
         </div>

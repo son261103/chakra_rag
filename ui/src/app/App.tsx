@@ -346,7 +346,7 @@ export default function App() {
       />
 
       <main className="chat-area">
-        <div className="chat-scroll">
+        <div className="chat-scroll side-scroll">
           {history.length === 0 && !asking && (
             <div className="empty-state">
               <div className="empty-logo">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
 
 interface Props {
@@ -11,18 +11,30 @@ interface Props {
 /** Ô nhập câu hỏi kiểu ChatGPT: bo tròn, nút gửi tròn, hint trạng thái. */
 export default function Composer({ onAsk, disabled, asking, ready }: Props) {
   const [question, setQuestion] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+    }
+  }, [question]);
 
   const submit = () => {
     const q = question.trim();
     if (!q || disabled) return;
     onAsk(q);
     setQuestion("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
   };
 
   return (
     <div className="composer-wrap">
       <div className="composer">
         <textarea
+          ref={textareaRef}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => {
@@ -42,6 +54,7 @@ export default function Composer({ onAsk, disabled, asking, ready }: Props) {
           disabled={disabled}
         />
         <button
+          type="button"
           className="send-btn"
           onClick={submit}
           disabled={disabled || !question.trim()}
@@ -51,7 +64,9 @@ export default function Composer({ onAsk, disabled, asking, ready }: Props) {
         </button>
       </div>
       <div className="composer-hint">
-        Câu trả lời luôn kèm trích dẫn nguồn · Enter để gửi, Shift+Enter xuống dòng
+        <span>Câu trả lời luôn kèm trích dẫn nguồn</span>
+        <span>·</span>
+        <span>Enter để gửi, Shift+Enter xuống dòng</span>
       </div>
     </div>
   );
