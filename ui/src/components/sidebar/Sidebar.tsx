@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { deleteFile, reingestFile, uploadFile } from "../../api/client";
 import type { ConversationSummary, FileEntry, IngestProgress } from "../../api/types";
+import ThemeToggle from "../theme/ThemeToggle";
 
 interface Props {
   files: FileEntry[];
@@ -105,6 +106,7 @@ export default function Sidebar({
         <div className="sidebar-brand">
           <span className="brand-logo">✦</span>
           <span className="brand-name">Chakra RAG</span>
+          <ThemeToggle />
         </div>
 
         <button className="new-chat-btn" onClick={onNewChat} type="button">

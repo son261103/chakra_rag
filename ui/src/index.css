@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+/* ===== Design tokens — palette đồng bộ portfolio (sonpham.dev) =====
+   Light: nền #F8FAF9, accent #267A66 | Dark: nền #070A0A, accent #9BCEC1
+   Dùng CSS variables + class .dark trên <html> (không dùng dark: variant),
+   giống cách portfolio đang làm với Tailwind v4. */
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-soft: var(--bg-soft);
+  --color-bg-card: var(--bg-card);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-green: var(--green);
+  --color-amber: var(--amber);
+  --color-red: var(--red);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+:root {
+  --bg: #f8faf9;
+  --bg-soft: #f1f6f4;
+  --bg-card: #ffffff;
+  --bg-elevated: #e5efea;
+  --border: #d5e2de;
+  --text: #0b1614;
+  --muted: #627a74;
+  --accent: #267a66;
+  --accent-hover: #1c5b4c;
+  --accent-soft: #e0efea;
+  --accent-contrast: #ffffff;
+  --green: #16a34a;
+  --amber: #d97706;
+  --red: #dc2626;
+  --font-sans: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html.dark {
+  --bg: #070a0a;
+  --bg-soft: #111817;
+  --bg-card: #0c1110;
+  --bg-elevated: #17201f;
+  --border: #24302e;
+  --text: #f1f7f5;
+  --muted: #6f7e7a;
+  --accent: #9bcec1;
+  --accent-hover: #6fafa0;
+  --accent-soft: rgba(155, 206, 193, 0.12);
+  --accent-contrast: #070a0a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Nhãn mono kỹ thuật đặc trưng của portfolio: uppercase + tracking. */
+.font-mono-tech {
+  font-family: var(--font-mono);
+  letter-spacing: -0.02em;
+}
+
+/* Scrollbar gọn theo theme */
+.side-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.side-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.side-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 4px 0;
+}
+
+.side-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+.side-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
