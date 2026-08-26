@@ -24,9 +24,6 @@ export default function ToolTraceGroup({ tools, onCitationClick }: Props) {
   const anyRunning = tools.some((t) => t.running);
   const totalResults = tools.reduce((sum, t) => sum + (t.trace?.n_results || 0), 0);
 
-  // Tìm query đầu tiên có nội dung để làm preview
-  const firstQuery = tools.find((t) => t.trace?.query?.trim())?.trace?.query?.trim();
-
   return (
     <div className={`collapsible-info-block ${open ? "open" : ""} ${anyRunning ? "running" : ""}`}>
       <button
@@ -47,11 +44,6 @@ export default function ToolTraceGroup({ tools, onCitationClick }: Props) {
           <span className="collapsible-info-badge">
             {tools.length} lượt{totalResults > 0 && ` · ${totalResults} kết quả`}
           </span>
-          {!anyRunning && firstQuery && (
-            <span className="collapsible-info-preview" title={firstQuery}>
-              "{firstQuery}"{tools.length > 1 && ` +${tools.length - 1}`}
-            </span>
-          )}
         </div>
 
         <div className="collapsible-info-right">
