@@ -280,12 +280,18 @@ export default function App() {
               setAsking(false);
               break;
             case "done": {
-              // Event cuối: payload đã verify → chuyển vào lịch sử.
+              // Event cuối: payload đã verify → đưa vào streaming để nhả mượt nốt chữ rồi chuyển lịch sử
               const { type: _t, ...response } = ev;
-              // Chỉ append nếu user vẫn đang xem đúng conversation này.
               if (activeIdRef.current === conversationId) {
-                setHistory((h) => [...h, { question, response }]);
-                setStreaming(null);
+                setStreaming((s) =>
+                  s
+                    ? {
+                        ...s,
+                        answer: response.answer,
+                        finalResponse: response,
+                      }
+                    : null
+                );
               }
               setAsking(false);
               void refreshConversations();
@@ -309,7 +315,9 @@ export default function App() {
     }
     // Nếu stream kết thúc mà chưa có event "done" (mất kết nối giữa chừng)
     setStreaming((s) => {
-      if (s && !s.error) return { ...s, error: "Mất kết nối — chưa nhận được câu trả lời hoàn chỉnh." };
+      if (s && !s.error && !s.finalResponse) {
+        return { ...s, error: "Mất kết nối — chưa nhận được câu trả lời hoàn chỉnh." };
+      }
       return s;
     });
     setAsking(false);
@@ -366,7 +374,17 @@ export default function App() {
             />
           ))}
 
-          {streaming && <StreamingMessage state={streaming} />}
+          {streaming && (
+            <StreamingMessage
+              state={streaming}
+              onComplete={(response) => {
+                if (activeIdRef.current === response.conversation_id || !response.conversation_id) {
+                  setHistory((h) => [...h, { question: streaming.question, response }]);
+                  setStreaming(null);
+                }
+              }}
+            />
+          )}
 
           {error && <div className="error-banner">{error}</div>}
           <div ref={bottomRef} />

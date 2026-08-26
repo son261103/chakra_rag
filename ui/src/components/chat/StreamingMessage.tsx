@@ -1,8 +1,9 @@
 import { Sparkles } from "lucide-react";
-import type { SearchTraceEntry } from "../../api/types";
+import type { AskResponse, SearchTraceEntry } from "../../api/types";
 import ThinkingBlock from "./ThinkingBlock";
 import ToolTraceGroup from "./ToolTraceGroup";
 import MarkdownAnswer from "./MarkdownAnswer";
+import { useSmoothText } from "../../hooks/useSmoothText";
 
 /** Trạng thái tin nhắn đang stream, do App.tsx cập nhật theo từng SSE event. */
 export interface StreamingState {
@@ -13,15 +14,27 @@ export interface StreamingState {
   toolCalls: { trace: SearchTraceEntry; running: boolean }[];
   answer: string;
   error: string | null;
+  /** Payload hoàn chỉnh khi nhận event "done" */
+  finalResponse?: AskResponse | null;
 }
 
 interface Props {
   state: StreamingState;
+  onComplete?: (response: AskResponse) => void;
 }
 
-/** Tin nhắn đang chạy: thinking gõ dần, tool calls chạy trực tiếp, answer gõ dần. */
-export default function StreamingMessage({ state }: Props) {
-  const { question, reasoning, thinkingActive, thinkingDurationMs, toolCalls, answer, error } = state;
+/** Tin nhắn đang chạy: thinking gõ dần, tool calls chạy trực tiếp, answer nhả chữ mượt mà như ChatGPT. */
+export default function StreamingMessage({ state, onComplete }: Props) {
+  const { question, reasoning, thinkingActive, thinkingDurationMs, toolCalls, answer, error, finalResponse } = state;
+
+  const smoothAnswer = useSmoothText(answer, {
+    isComplete: !!finalResponse,
+    onComplete: () => {
+      if (finalResponse) {
+        onComplete?.(finalResponse);
+      }
+    },
+  });
 
   return (
     <div className="message-pair">
@@ -46,11 +59,11 @@ export default function StreamingMessage({ state }: Props) {
             <ToolTraceGroup tools={toolCalls} onCitationClick={() => {}} streaming />
           )}
 
-          {answer && <MarkdownAnswer text={answer} streaming />}
+          {smoothAnswer && <MarkdownAnswer text={smoothAnswer} streaming />}
 
           {error && <div className="error-banner small">{error}</div>}
 
-          {!reasoning && !thinkingActive && toolCalls.length === 0 && !answer && !error && (
+          {!reasoning && !thinkingActive && toolCalls.length === 0 && !smoothAnswer && !error && (
             <div className="thinking-dots">
               <span /> <span /> <span />
               <span className="thinking-label">Đang kết nối…</span>
