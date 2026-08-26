@@ -1,7 +1,7 @@
 import { Sparkles } from "lucide-react";
 import type { SearchTraceEntry } from "../../api/types";
 import ThinkingBlock from "./ThinkingBlock";
-import ToolCallBlock from "./ToolCallBlock";
+import ToolTraceGroup from "./ToolTraceGroup";
 import MarkdownAnswer from "./MarkdownAnswer";
 
 /** Trạng thái tin nhắn đang stream, do App.tsx cập nhật theo từng SSE event. */
@@ -39,17 +39,7 @@ export default function StreamingMessage({ state }: Props) {
           )}
 
           {toolCalls.length > 0 && (
-            <div className="tool-trace-group">
-              {toolCalls.map((tc, i) => (
-                <ToolCallBlock
-                  key={i}
-                  index={i + 1}
-                  trace={tc.trace}
-                  running={tc.running}
-                  onCitationClick={() => {}}
-                />
-              ))}
-            </div>
+            <ToolTraceGroup tools={toolCalls} onCitationClick={() => {}} streaming />
           )}
 
           {answer && <MarkdownAnswer text={answer} streaming />}

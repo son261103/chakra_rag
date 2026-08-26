@@ -1,9 +1,9 @@
 import { AlertTriangle, Sparkles, XCircle } from "lucide-react";
 import type { QAEntry } from "../../app/App";
 import ThinkingBlock from "./ThinkingBlock";
-import ToolCallBlock from "./ToolCallBlock";
+import ToolTraceGroup from "./ToolTraceGroup";
 import MarkdownAnswer from "./MarkdownAnswer";
-import SourceCard from "../sources/SourceCard";
+import SourcesBlock from "./SourcesBlock";
 
 interface Props {
   entry: QAEntry;
@@ -17,12 +17,13 @@ export default function ChatMessage({ entry, onCitationClick }: Props) {
   response.citations.forEach((c, i) => citationIndex.set(c.chunk_id, i + 1));
 
   const nTraces = response.search_trace.length;
-  const nSources = response.citations.length;
 
   const latencyDisplay =
     response.latency_ms >= 1000
       ? `${(response.latency_ms / 1000).toFixed(1)}s`
       : `${response.latency_ms}ms`;
+
+  const toolItems = response.search_trace.map((trace) => ({ trace, running: false }));
 
   return (
     <div className="message-pair">
@@ -39,18 +40,8 @@ export default function ChatMessage({ entry, onCitationClick }: Props) {
             <ThinkingBlock text={response.reasoning} active={false} durationMs={response.latency_ms} />
           )}
 
-          {response.search_trace.length > 0 && (
-            <div className="tool-trace-group">
-              {response.search_trace.map((t, i) => (
-                <ToolCallBlock
-                  key={i}
-                  index={i + 1}
-                  trace={t}
-                  running={false}
-                  onCitationClick={onCitationClick}
-                />
-              ))}
-            </div>
+          {toolItems.length > 0 && (
+            <ToolTraceGroup tools={toolItems} onCitationClick={onCitationClick} />
           )}
 
           <MarkdownAnswer
@@ -83,22 +74,8 @@ export default function ChatMessage({ entry, onCitationClick }: Props) {
             </div>
           )}
 
-          {nSources > 0 && (
-            <div className="sources-container">
-              <div className="sources-title">
-                Nguồn trích dẫn ({nSources})
-              </div>
-              <div className="sources-grid">
-                {response.citations.map((c, i) => (
-                  <SourceCard
-                    key={c.chunk_id}
-                    index={i + 1}
-                    citation={c}
-                    onClick={() => onCitationClick(c.chunk_id)}
-                  />
-                ))}
-              </div>
-            </div>
+          {response.citations.length > 0 && (
+            <SourcesBlock citations={response.citations} onCitationClick={onCitationClick} />
           )}
 
           <div className="message-meta">
