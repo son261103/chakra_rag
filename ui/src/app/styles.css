@@ -886,20 +886,43 @@ html.dark .composer {
 }
 
 .send-btn {
-  @apply grid size-[34px] shrink-0 cursor-pointer place-items-center rounded-full border-none bg-accent text-[17px] text-accent-contrast transition-all shadow-sm;
+  @apply relative grid size-[34px] shrink-0 cursor-pointer place-items-center rounded-full border-none bg-accent text-[17px] text-accent-contrast transition-all shadow-sm;
+  outline: none !important;
 }
 
 .send-btn:hover:not(:disabled) {
   @apply bg-accent-hover scale-105;
 }
 
-.send-btn:disabled {
-  @apply cursor-default opacity-40 bg-bg-elevated scale-100;
+.send-btn:disabled:not(.running) {
+  @apply cursor-default opacity-35 bg-bg-elevated text-muted scale-100;
 }
 
-.composer-hint {
-  @apply mt-2 text-center text-[11.5px] text-muted/80 flex items-center justify-center gap-1.5;
-  font-family: var(--font-mono);
+.send-btn.running {
+  @apply cursor-pointer bg-bg-card text-accent border border-accent/40 shadow-sm transition-all;
+}
+
+.send-btn.running:hover {
+  @apply scale-105 bg-bg-elevated border-accent text-accent;
+}
+
+.send-btn-spinner {
+  @apply absolute -inset-[3px] rounded-full border-2 border-transparent;
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  animation: spin 0.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.send-btn-square {
+  @apply rounded-[2px] transition-transform;
+}
+
+.send-btn.running:hover .send-btn-square {
+  transform: scale(0.9);
+}
+
+.composer.is-asking {
+  @apply border-accent/30;
 }
 
 /* ================= Trace panel (phải) ================= */

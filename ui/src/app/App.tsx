@@ -90,6 +90,7 @@ export default function App() {
   const thinkStartRef = useRef<number | null>(null);
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeConversationId;
+  const abortRef = useRef<AbortController | null>(null);
 
   const refreshConversations = useCallback(async () => {
     try {
@@ -180,12 +181,24 @@ export default function App() {
     }
   };
 
+  const handleStop = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+      setAsking(false);
+      setStreaming((s) => (s ? { ...s, thinkingActive: false } : null));
+    }
+  };
+
   const handleAsk = async (question: string) => {
     if (asking) return;
     setAskError(null);
     thinkStartRef.current = null;
     setStreaming(EMPTY_STREAM(question));
     setAsking(true);
+
+    const abortController = new AbortController();
+    abortRef.current = abortController;
 
     let conversationId: string;
     try {
@@ -194,6 +207,7 @@ export default function App() {
       setStreaming(null);
       setAskError(String(e));
       setAsking(false);
+      abortRef.current = null;
       return;
     }
 
@@ -279,12 +293,19 @@ export default function App() {
             }
           }
         },
-        { conversationId }
+        { conversationId, signal: abortController.signal }
       );
     } catch (e) {
+      if (abortController.signal.aborted) {
+        setAsking(false);
+        abortRef.current = null;
+        return;
+      }
       setStreaming(null);
       setAskError(String(e));
       setAsking(false);
+    } finally {
+      abortRef.current = null;
     }
     // Nếu stream kết thúc mà chưa có event "done" (mất kết nối giữa chừng)
     setStreaming((s) => {
@@ -351,7 +372,13 @@ export default function App() {
           <div ref={bottomRef} />
         </div>
 
-        <Composer onAsk={handleAsk} disabled={!ready || asking} asking={asking} ready={ready} />
+        <Composer
+          onAsk={handleAsk}
+          onStop={handleStop}
+          disabled={!ready}
+          asking={asking}
+          ready={ready}
+        />
       </main>
 
       <SourceDrawer chunkId={selectedChunkId} onClose={() => setSelectedChunkId(null)} />

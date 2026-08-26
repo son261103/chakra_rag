@@ -125,11 +125,20 @@ const ASK_INACTIVITY_MS = 100_000;
 export async function askStream(
   question: string,
   onEvent: (ev: StreamEvent) => void,
-  options?: { mode?: "agent" | "stuff"; conversationId?: string | null }
+  options?: { mode?: "agent" | "stuff"; conversationId?: string | null; signal?: AbortSignal }
 ): Promise<void> {
   const mode = options?.mode ?? "agent";
   const conversationId = options?.conversationId ?? undefined;
   const controller = new AbortController();
+
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      controller.abort();
+    } else {
+      options.signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+  }
+
   let timer: number | undefined;
   const armWatchdog = () => {
     if (timer !== undefined) window.clearTimeout(timer);

@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 
 interface Props {
   onAsk: (question: string) => void;
+  onStop?: () => void;
   disabled: boolean;
   asking: boolean;
   ready: boolean;
 }
 
-/** Ô nhập câu hỏi kiểu ChatGPT: bo tròn, nút gửi tròn, hint trạng thái. */
-export default function Composer({ onAsk, disabled, asking, ready }: Props) {
+/** Ô nhập câu hỏi kiểu ChatGPT: bo tròn, nút gửi chuyển thành nút Dừng (Stop) khi đang chạy. */
+export default function Composer({ onAsk, onStop, disabled, asking, ready }: Props) {
   const [question, setQuestion] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -22,7 +23,7 @@ export default function Composer({ onAsk, disabled, asking, ready }: Props) {
 
   const submit = () => {
     const q = question.trim();
-    if (!q || disabled) return;
+    if (!q || disabled || asking) return;
     onAsk(q);
     setQuestion("");
     if (textareaRef.current) {
@@ -32,7 +33,7 @@ export default function Composer({ onAsk, disabled, asking, ready }: Props) {
 
   return (
     <div className="composer-wrap">
-      <div className="composer">
+      <div className={`composer ${asking ? "is-asking" : ""}`}>
         <textarea
           ref={textareaRef}
           value={question}
@@ -40,28 +41,44 @@ export default function Composer({ onAsk, disabled, asking, ready }: Props) {
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              submit();
+              if (asking) {
+                onStop?.();
+              } else {
+                submit();
+              }
             }
           }}
           placeholder={
             !ready
               ? "Chờ index tài liệu sẵn sàng…"
               : asking
-                ? "Đang tra cứu tài liệu…"
+                ? "Chakra AI đang tra cứu & tạo câu trả lời…"
                 : "Hỏi về tài liệu nội bộ…"
           }
           rows={1}
-          disabled={disabled}
+          disabled={disabled || asking}
         />
-        <button
-          type="button"
-          className="send-btn"
-          onClick={submit}
-          disabled={disabled || !question.trim()}
-          title="Gửi (Enter)"
-        >
-          <ArrowUp size={17} />
-        </button>
+        {asking ? (
+          <button
+            type="button"
+            className="send-btn running"
+            onClick={onStop}
+            title="Dừng phản hồi"
+          >
+            <span className="send-btn-spinner" />
+            <Square size={11} className="send-btn-square" fill="currentColor" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={`send-btn ${question.trim() ? "has-text" : ""}`}
+            onClick={submit}
+            disabled={disabled || !question.trim()}
+            title="Gửi (Enter)"
+          >
+            <ArrowUp size={17} />
+          </button>
+        )}
       </div>
     </div>
   );
