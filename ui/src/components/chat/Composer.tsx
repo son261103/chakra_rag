@@ -21,6 +21,13 @@ export default function Composer({ onAsk, onStop, disabled, asking, ready }: Pro
     }
   }, [question]);
 
+  // Tự động focus vào ô input khi sẵn sàng hoặc khi AI trả lời xong
+  useEffect(() => {
+    if (!disabled) {
+      textareaRef.current?.focus();
+    }
+  }, [disabled, asking]);
+
   const submit = () => {
     const q = question.trim();
     if (!q || disabled || asking) return;
@@ -28,6 +35,7 @@ export default function Composer({ onAsk, onStop, disabled, asking, ready }: Pro
     setQuestion("");
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
+      textareaRef.current.focus();
     }
   };
 
@@ -41,9 +49,7 @@ export default function Composer({ onAsk, onStop, disabled, asking, ready }: Pro
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              if (asking) {
-                onStop?.();
-              } else {
+              if (!asking) {
                 submit();
               }
             }
@@ -52,11 +58,11 @@ export default function Composer({ onAsk, onStop, disabled, asking, ready }: Pro
             !ready
               ? "Chờ index tài liệu sẵn sàng…"
               : asking
-                ? "Chakra AI đang tra cứu & tạo câu trả lời…"
+                ? "Chakra AI đang phản hồi… (bạn vẫn có thể nhập tiếp)"
                 : "Hỏi về tài liệu nội bộ…"
           }
           rows={1}
-          disabled={disabled || asking}
+          disabled={disabled}
         />
         {asking ? (
           <button
