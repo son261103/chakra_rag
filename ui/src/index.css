@@ -65,6 +65,18 @@ html.dark {
   box-sizing: border-box;
 }
 
+/* Loại bỏ viền trắng thô mặc định của trình duyệt khi click button / card */
+button,
+[role="button"] {
+  outline: none;
+}
+
+button:focus,
+button:focus-visible,
+*:focus-visible {
+  outline: none;
+}
+
 html {
   scroll-behavior: smooth;
 }

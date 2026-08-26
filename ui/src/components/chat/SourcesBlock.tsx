@@ -27,19 +27,19 @@ export default function SourcesBlock({ citations, onCitationClick }: Props) {
   const uniqueDocs = Array.from(new Set(citations.map((c) => c.doc)));
 
   return (
-    <div className={`sources-block ${open ? "open" : ""}`}>
+    <div className={`collapsible-info-block ${open ? "open" : ""}`}>
       <button
         type="button"
-        className="sources-toggle"
+        className="collapsible-info-toggle"
         onClick={() => setOpen((o) => !o)}
         title={open ? "Thu gọn danh sách nguồn trích dẫn" : "Mở rộng xem chi tiết các đoạn trích dẫn"}
       >
-        <div className="sources-toggle-left">
-          <FileText size={13} className="text-accent shrink-0" />
-          <span className="sources-toggle-title">Nguồn trích dẫn</span>
-          <span className="sources-count-badge">{citations.length}</span>
+        <div className="collapsible-info-left">
+          <FileText size={14} className="text-accent shrink-0" />
+          <span className="collapsible-info-title">Nguồn trích dẫn</span>
+          <span className="collapsible-info-badge">{citations.length} nguồn</span>
 
-          <div className="sources-preview-pills">
+          <div className="collapsible-info-preview">
             {uniqueDocs.slice(0, 2).map((doc) => (
               <span key={doc} className="source-doc-chip" title={doc}>
                 {shortenDocName(doc)}
@@ -51,14 +51,14 @@ export default function SourcesBlock({ citations, onCitationClick }: Props) {
           </div>
         </div>
 
-        <div className="sources-toggle-right">
-          <span className="sources-toggle-hint">{open ? "Thu gọn" : "Chi tiết"}</span>
-          <ChevronRight size={13} className={`sources-chevron ${open ? "open" : ""}`} />
+        <div className="collapsible-info-right">
+          <span className="collapsible-info-hint">{open ? "Thu gọn" : "Chi tiết"}</span>
+          <ChevronRight size={13} className={`collapsible-info-chevron ${open ? "open" : ""}`} />
         </div>
       </button>
 
-      <div className={`sources-collapsible ${open ? "open" : ""}`}>
-        <div className="sources-collapsible-inner">
+      <div className={`collapsible-info-body ${open ? "open" : ""}`}>
+        <div className="collapsible-info-inner">
           <div className="sources-grid">
             {citations.map((c, i) => (
               <SourceCard

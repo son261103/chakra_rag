@@ -28,40 +28,40 @@ export default function ToolTraceGroup({ tools, onCitationClick }: Props) {
   const firstQuery = tools.find((t) => t.trace?.query?.trim())?.trace?.query?.trim();
 
   return (
-    <div className={`tools-block ${open ? "open" : ""} ${anyRunning ? "running" : ""}`}>
+    <div className={`collapsible-info-block ${open ? "open" : ""} ${anyRunning ? "running" : ""}`}>
       <button
         type="button"
-        className="tools-toggle"
+        className="collapsible-info-toggle"
         onClick={() => setOpen((o) => !o)}
         title={open ? "Thu gọn chi tiết tra cứu" : "Mở rộng xem chi tiết từng lượt tra cứu"}
       >
-        <div className="tools-toggle-left">
+        <div className="collapsible-info-left">
           {anyRunning ? (
             <span className="tool-spinner" />
           ) : (
-            <Search size={14} className="tools-icon text-accent" />
+            <Search size={14} className="text-accent shrink-0" />
           )}
-          <span className="tools-toggle-title">
+          <span className="collapsible-info-title">
             {anyRunning ? "Đang tra cứu tài liệu…" : "Đã tra cứu tài liệu"}
           </span>
-          <span className="tools-count-badge">
+          <span className="collapsible-info-badge">
             {tools.length} lượt{totalResults > 0 && ` · ${totalResults} kết quả`}
           </span>
           {!anyRunning && firstQuery && (
-            <span className="tools-query-preview" title={firstQuery}>
+            <span className="collapsible-info-preview" title={firstQuery}>
               "{firstQuery}"{tools.length > 1 && ` +${tools.length - 1}`}
             </span>
           )}
         </div>
 
-        <div className="tools-toggle-right">
-          <span className="tools-toggle-hint">{open ? "Thu gọn" : "Chi tiết"}</span>
-          <ChevronRight size={13} className={`tools-chevron ${open ? "open" : ""}`} />
+        <div className="collapsible-info-right">
+          <span className="collapsible-info-hint">{open ? "Thu gọn" : "Chi tiết"}</span>
+          <ChevronRight size={13} className={`collapsible-info-chevron ${open ? "open" : ""}`} />
         </div>
       </button>
 
-      <div className={`tools-collapsible ${open ? "open" : ""}`}>
-        <div className="tools-collapsible-inner">
+      <div className={`collapsible-info-body ${open ? "open" : ""}`}>
+        <div className="collapsible-info-inner">
           <div className="tools-list">
             {tools.map((item, i) => (
               <ToolCallBlock
