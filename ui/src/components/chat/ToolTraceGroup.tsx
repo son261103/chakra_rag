@@ -15,13 +15,14 @@ interface Props {
   streaming?: boolean;
 }
 
-/** Gom các lượt tra cứu tài liệu thành 1 khối collapsible gọn gàng, bấm để mở rộng chi tiết. */
-export default function ToolTraceGroup({ tools, onCitationClick }: Props) {
+export default function ToolTraceGroup({ tools, onCitationClick, streaming = false }: Props) {
   const [open, setOpen] = useState(false);
 
   if (tools.length === 0) return null;
 
-  const anyRunning = tools.some((t) => t.running);
+  // Khi đang streaming câu hỏi và các tool chưa chốt xong: giữ trạng thái loading liên tục,
+  // không bật-tắt spinner giật cục giữa các lượt gọi tool
+  const anyRunning = streaming || tools.some((t) => t.running);
   const totalResults = tools.reduce((sum, t) => sum + (t.trace?.n_results || 0), 0);
 
   return (

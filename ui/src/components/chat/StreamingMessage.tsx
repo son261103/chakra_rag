@@ -56,7 +56,11 @@ export default function StreamingMessage({ state, onComplete }: Props) {
           )}
 
           {toolCalls.length > 0 && (
-            <ToolTraceGroup tools={toolCalls} onCitationClick={() => {}} streaming />
+            <ToolTraceGroup
+              tools={toolCalls}
+              onCitationClick={() => {}}
+              streaming={!answer && !finalResponse}
+            />
           )}
 
           {smoothAnswer && <MarkdownAnswer text={smoothAnswer} streaming />}
@@ -64,9 +68,13 @@ export default function StreamingMessage({ state, onComplete }: Props) {
           {error && <div className="error-banner small">{error}</div>}
 
           {!reasoning && !thinkingActive && toolCalls.length === 0 && !smoothAnswer && !error && (
-            <div className="thinking-dots">
-              <span /> <span /> <span />
-              <span className="thinking-label">Đang kết nối…</span>
+            <div className="collapsible-info-block running">
+              <div className="collapsible-info-toggle cursor-default">
+                <div className="collapsible-info-left">
+                  <span className="tool-spinner" />
+                  <span className="collapsible-info-title">Đang xử lý…</span>
+                </div>
+              </div>
             </div>
           )}
         </div>
