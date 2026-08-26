@@ -8,7 +8,12 @@
 
 .layout {
   @apply grid h-screen overflow-hidden;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+/* Khi mở panel tra cứu bên phải: thêm cột 360px trên màn hình rộng. */
+.layout.trace-open {
+  grid-template-columns: 280px minmax(0, 1fr) 360px;
 }
 
 /* ================= Sidebar ================= */
@@ -279,6 +284,39 @@
   @apply leading-none;
 }
 
+/* ================= Files button (sidebar) ================= */
+
+.files-btn {
+  @apply inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-border bg-bg-elevated px-3 py-2.5 text-[13px] font-semibold leading-tight tracking-[-0.01em] text-text transition;
+}
+
+.files-btn:hover {
+  @apply border-accent/40;
+  filter: brightness(0.985);
+}
+
+.files-btn-icon {
+  @apply text-sm;
+}
+
+/* ================= File drawer ================= */
+
+.file-drawer {
+  @apply w-[min(420px,92vw)];
+}
+
+.file-drawer-body {
+  @apply flex flex-col gap-3;
+}
+
+.file-drawer-label {
+  @apply mt-1;
+}
+
+.file-drawer-list {
+  @apply max-h-none flex-1 overflow-y-auto;
+}
+
 /* ================= Chat area ================= */
 
 .chat-area {
@@ -292,7 +330,7 @@
 /* Empty state */
 
 .empty-state {
-  @apply mx-auto mt-[12vh] max-w-[720px] px-6 text-center;
+  @apply mx-auto mt-[12vh] w-full max-w-[min(56rem,calc(100%-3rem))] px-4 text-center;
 }
 
 .empty-logo {
@@ -327,7 +365,7 @@
 /* Messages */
 
 .message-pair {
-  @apply mx-auto flex max-w-[760px] flex-col gap-2.5 px-6 py-2;
+  @apply mx-auto flex w-full max-w-[min(56rem,calc(100%-3rem))] flex-col gap-3 px-4 py-2;
 }
 
 .user-row {
@@ -350,44 +388,60 @@
 }
 
 .assistant-content {
-  @apply flex min-w-0 flex-1 flex-col gap-1.5;
+  @apply flex min-w-0 flex-1 flex-col gap-3;
 }
 
-/* Reasoning / thinking block */
+/* Reasoning / thinking block — card kiểu ChatGPT */
 
 .thinking-block {
-  @apply border-l-2 border-border pl-3;
+  @apply rounded-xl border border-border bg-bg-soft;
 }
 
 .thinking-header {
-  @apply flex cursor-pointer items-center gap-2 border-none bg-transparent p-0.5 text-[13px] font-medium text-muted;
-  padding-top: 2px;
-  padding-bottom: 2px;
+  @apply flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-2.5 text-left text-[13px] font-medium text-muted transition-colors;
 }
 
-.thinking-header:hover .thinking-title {
+.thinking-header:hover {
   @apply text-text;
 }
 
 .thinking-chevron {
-  @apply text-[10px] text-muted transition-transform duration-150;
+  @apply shrink-0 text-muted transition-transform duration-200;
 }
 
 .thinking-chevron.open {
   @apply rotate-90;
 }
 
+.thinking-icon {
+  @apply shrink-0 text-accent;
+}
+
 .thinking-title {
   @apply transition-colors duration-150;
 }
 
+.thinking-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+}
+
+.thinking-body.open {
+  grid-template-rows: 1fr;
+}
+
+.thinking-body-inner {
+  overflow: hidden;
+}
+
 .thinking-text {
-  @apply mt-1.5 max-h-[300px] overflow-y-auto whitespace-pre-wrap text-[13px] leading-relaxed text-muted;
+  @apply max-h-[300px] overflow-y-auto whitespace-pre-wrap border-t border-border px-3 py-2.5 text-[13px] leading-relaxed text-muted;
 }
 
 .thinking-spinner,
 .tool-spinner {
-  @apply size-3 shrink-0 rounded-full border-2 border-border;
+  @apply size-3.5 shrink-0 rounded-full border-2 border-border;
   border-top-color: var(--accent);
   animation: spin 0.8s linear infinite;
 }
@@ -398,15 +452,18 @@
   }
 }
 
-/* Tool call block */
+/* Tool call block — card kiểu ChatGPT */
 
 .tool-block {
-  @apply rounded-[10px] border border-border bg-bg-soft p-2 text-[13px];
-  padding: 8px 12px;
+  @apply rounded-xl border border-border bg-bg-soft text-[13px];
 }
 
 .tool-header {
-  @apply flex w-full cursor-pointer items-center gap-2 border-none bg-transparent p-0 text-left text-[13px] text-text;
+  @apply flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-2.5 text-left text-[13px] text-text transition-colors;
+}
+
+.tool-header:hover:not(:disabled) {
+  @apply bg-bg-elevated;
 }
 
 .tool-header:disabled {
@@ -414,32 +471,50 @@
 }
 
 .tool-chevron {
-  @apply text-[10px] text-muted transition-transform duration-150;
+  @apply shrink-0 text-muted transition-transform duration-200;
 }
 
 .tool-chevron.open {
   @apply rotate-90;
 }
 
-.tool-title code {
-  @apply rounded-[4px] bg-bg-elevated px-1 text-xs;
-  padding: 1px 5px;
+.tool-icon {
+  @apply shrink-0 text-accent;
+}
+
+.tool-title {
+  @apply font-medium;
+}
+
+.tool-query-inline {
+  @apply min-w-0 flex-1 truncate text-muted;
 }
 
 .tool-summary {
-  @apply ml-auto whitespace-nowrap text-xs text-muted;
+  @apply ml-auto shrink-0 whitespace-nowrap text-xs text-muted;
+  font-family: var(--font-mono);
 }
 
-.tool-query {
-  @apply mt-1.5 text-[12.5px] italic text-muted;
+.tool-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+}
+
+.tool-body.open {
+  grid-template-rows: 1fr;
+}
+
+.tool-body-inner {
+  overflow: hidden;
 }
 
 .tool-results {
-  @apply mt-2 flex flex-wrap gap-1.5;
+  @apply flex flex-wrap gap-1.5 border-t border-border px-3 py-2.5;
 }
 
 .tool-result-chip {
-  @apply cursor-pointer rounded-md border border-border bg-bg-card px-2 text-[11.5px] text-accent;
+  @apply cursor-pointer rounded-md border border-border bg-bg-card px-2 text-[11.5px] text-accent transition-colors;
   font-family: var(--font-mono);
   padding: 3px 8px;
 }
@@ -605,7 +680,7 @@
 }
 
 .badge {
-  @apply rounded-md px-2 py-0.5 text-xs leading-snug;
+  @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs leading-snug;
   padding: 2px 8px;
 }
 
@@ -658,8 +733,26 @@
 }
 
 .message-meta {
-  @apply mt-0.5 text-[11.5px] text-muted;
+  @apply mt-0.5 flex items-center gap-2 text-[11.5px] text-muted;
   font-family: var(--font-mono);
+}
+
+/* Chip mở panel tra cứu — nằm ở cuối dòng meta */
+.trace-chip {
+  @apply ml-auto inline-flex cursor-pointer items-center gap-1 rounded-md border border-border bg-bg-soft px-1.5 py-0.5 text-[11px] text-muted transition;
+  font-family: var(--font-sans);
+}
+
+.trace-chip:hover {
+  @apply bg-bg-elevated text-text;
+}
+
+.trace-chip.active {
+  @apply border-accent/60 bg-accent-soft text-accent;
+}
+
+.trace-chip svg {
+  @apply shrink-0;
 }
 
 /* Thinking dots */
@@ -703,8 +796,8 @@
 /* Error banner */
 
 .error-banner {
-  @apply mx-auto my-2 rounded-[10px] border border-red/40 bg-red/10 p-[10px_14px] text-[13px] text-red;
-  max-width: 760px;
+  @apply mx-auto my-2 w-full rounded-[10px] border border-red/40 bg-red/10 p-[10px_14px] text-[13px] text-red;
+  max-width: min(56rem, calc(100% - 3rem));
 }
 
 .error-banner.small {
@@ -715,7 +808,7 @@
 /* ================= Composer ================= */
 
 .composer-wrap {
-  @apply mx-auto w-full max-w-[760px] p-[4px_24px_12px];
+  @apply mx-auto w-full max-w-[min(56rem,calc(100%-3rem))] p-[4px_24px_12px];
 }
 
 .composer {
@@ -756,6 +849,46 @@ html.dark .composer {
 .composer-hint {
   @apply mt-2 text-center text-[11.5px] text-muted;
   font-family: var(--font-mono);
+}
+
+/* ================= Trace panel (phải) ================= */
+
+.trace-panel {
+  @apply flex h-screen min-w-0 flex-col border-l border-border bg-bg;
+}
+
+.trace-panel-header {
+  @apply flex shrink-0 items-center justify-between border-b border-border px-3.5 py-3;
+}
+
+.trace-panel-title {
+  @apply flex items-center gap-2 text-[13.5px] font-semibold tracking-[-0.01em];
+}
+
+.trace-panel-title svg {
+  @apply text-accent;
+}
+
+.trace-panel-body {
+  @apply flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3.5;
+}
+
+.trace-question {
+  @apply truncate rounded-lg border border-border bg-bg-card px-3 py-2 text-[13px] text-muted;
+}
+
+.trace-section {
+  @apply flex flex-col gap-2;
+}
+
+.trace-section-title {
+  @apply flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+}
+
+.trace-empty {
+  @apply py-10 text-center text-[13px] text-muted;
 }
 
 /* ================= Source drawer ================= */
@@ -1029,6 +1162,20 @@ html.dark .doc-pill.status-queued {
 
 /* ================= Responsive ================= */
 
+/* Màn hình hẹp hơn 1100px: panel tra cứu chuyển thành overlay trượt từ phải,
+   không chiếm cột grid để chat không bị ép quá hẹp. */
+@media (max-width: 1100px) {
+  .layout.trace-open {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .trace-panel {
+    @apply fixed bottom-0 right-0 top-0 z-40 h-screen w-[min(360px,92vw)];
+    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.12);
+    animation: slide-in 0.2s ease;
+  }
+}
+
 @media (max-width: 860px) {
   .layout {
     grid-template-columns: 1fr;
@@ -1036,6 +1183,10 @@ html.dark .doc-pill.status-queued {
 
   .sidebar {
     display: none;
+  }
+
+  .trace-panel {
+    width: 100vw;
   }
 
   .suggestions {

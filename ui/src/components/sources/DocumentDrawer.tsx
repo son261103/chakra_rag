@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { X } from "lucide-react";
 import { getFileChunks } from "../../api/client";
 import type { ChunkDetail, FileChunksResponse, FileEntry } from "../../api/types";
 
@@ -99,7 +100,7 @@ export default function DocumentDrawer({ file, onClose }: Props) {
             <h3 title={meta.name}>{meta.name}</h3>
           </div>
           <button type="button" className="drawer-close" onClick={onClose} aria-label="Đóng">
-            ✕
+            <X size={15} />
           </button>
         </div>
 

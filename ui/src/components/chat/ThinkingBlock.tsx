@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Brain, ChevronRight } from "lucide-react";
 
 interface Props {
   text: string;
@@ -8,12 +9,10 @@ interface Props {
   durationMs: number | null;
 }
 
-/** Khối "thinking" kiểu ChatGPT: collapsible, gõ dần khi stream,
- *  khi xong thu gọn thành "Đã suy luận trong Xs". */
+/** Khối "thinking" kiểu ChatGPT: card bo tròn, collapsible mượt. */
 export default function ThinkingBlock({ text, active, durationMs }: Props) {
   const [open, setOpen] = useState(active);
 
-  // Đang stream thì luôn mở; khi xong tự thu gọn lại.
   useEffect(() => {
     if (active) setOpen(true);
     else setOpen(false);
@@ -26,19 +25,26 @@ export default function ThinkingBlock({ text, active, durationMs }: Props) {
   return (
     <div className={`thinking-block ${active ? "active" : ""}`}>
       <button className="thinking-header" onClick={() => setOpen((o) => !o)}>
-        <span className={`thinking-chevron ${open ? "open" : ""}`}>▸</span>
+        <ChevronRight size={14} className={`thinking-chevron ${open ? "open" : ""}`} />
         {active ? (
           <>
             <span className="thinking-spinner" />
             <span className="thinking-title">Đang suy luận…</span>
           </>
         ) : (
-          <span className="thinking-title">
-            💭 Đã suy luận{seconds !== null ? ` trong ${seconds}s` : ""}
-          </span>
+          <>
+            <Brain size={14} className="thinking-icon" />
+            <span className="thinking-title">
+              Đã suy luận{seconds !== null ? ` trong ${seconds}s` : ""}
+            </span>
+          </>
         )}
       </button>
-      {open && <div className="thinking-text">{text}</div>}
+      <div className={`thinking-body ${open ? "open" : ""}`}>
+        <div className="thinking-body-inner">
+          <div className="thinking-text">{text}</div>
+        </div>
+      </div>
     </div>
   );
 }

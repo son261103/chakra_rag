@@ -1,19 +1,26 @@
+import { AlertTriangle, FileText, Search, Sparkles, XCircle } from "lucide-react";
 import type { QAEntry } from "../../app/App";
-import type { Citation } from "../../api/types";
 import ThinkingBlock from "./ThinkingBlock";
-import ToolCallBlock from "./ToolCallBlock";
 import MarkdownAnswer from "./MarkdownAnswer";
 
 interface Props {
   entry: QAEntry;
+  /** true khi tin nhắn này đang được chọn để hiện trace bên panel phải. */
+  selected: boolean;
   onCitationClick: (chunkId: string) => void;
+  /** Mở panel phải xem lượt tra cứu + nguồn của tin nhắn này. */
+  onOpenTrace: () => void;
 }
 
-/** Một cặp hỏi–trả lời đã hoàn tất: user bubble phải, assistant block trái. */
-export default function ChatMessage({ entry, onCitationClick }: Props) {
+/** Một cặp hỏi–trả lời đã hoàn tất. Tool call + nguồn đã chuyển sang panel phải. */
+export default function ChatMessage({ entry, selected, onCitationClick, onOpenTrace }: Props) {
   const { question, response } = entry;
   const citationIndex = new Map<string, number>();
   response.citations.forEach((c, i) => citationIndex.set(c.chunk_id, i + 1));
+
+  const nTraces = response.search_trace.length;
+  const nSources = response.citations.length;
+  const hasTrace = nTraces > 0 || nSources > 0;
 
   return (
     <div className="message-pair">
@@ -22,25 +29,13 @@ export default function ChatMessage({ entry, onCitationClick }: Props) {
       </div>
 
       <div className="assistant-row">
-        <div className="avatar">✦</div>
+        <div className="avatar">
+          <Sparkles size={15} />
+        </div>
         <div className="assistant-content">
           {response.reasoning && (
-            <ThinkingBlock
-              text={response.reasoning}
-              active={false}
-              durationMs={response.latency_ms}
-            />
+            <ThinkingBlock text={response.reasoning} active={false} durationMs={response.latency_ms} />
           )}
-
-          {response.search_trace.map((t, i) => (
-            <ToolCallBlock
-              key={i}
-              index={i + 1}
-              trace={t}
-              running={false}
-              onCitationClick={onCitationClick}
-            />
-          ))}
 
           <MarkdownAnswer
             text={response.answer}
@@ -55,51 +50,41 @@ export default function ChatMessage({ entry, onCitationClick }: Props) {
             response.invalid_citations.length > 0) && (
             <div className="warnings">
               {response.low_confidence && response.search_trace.length > 0 && (
-                <span className="badge warn">⚠️ Độ tin cậy truy xuất thấp</span>
+                <span className="badge warn">
+                  <AlertTriangle size={12} /> Độ tin cậy truy xuất thấp
+                </span>
               )}
               {response.unsupported_claims.length > 0 && (
                 <span className="badge warn">
-                  ⚠️ {response.unsupported_claims.length} câu chưa được nguồn đỡ
+                  <AlertTriangle size={12} /> {response.unsupported_claims.length} câu chưa được nguồn đỡ
                 </span>
               )}
               {response.invalid_citations.length > 0 && (
                 <span className="badge error">
-                  ✗ {response.invalid_citations.length} citation không hợp lệ
+                  <XCircle size={12} /> {response.invalid_citations.length} citation không hợp lệ
                 </span>
               )}
             </div>
           )}
 
-          {response.citations.length > 0 && (
-            <div className="sources-list">
-              <div className="sources-title">Nguồn trích dẫn</div>
-              {response.citations.map((c, i) => (
-                <SourceCard key={c.chunk_id} index={i + 1} citation={c} onClick={() => onCitationClick(c.chunk_id)} />
-              ))}
-            </div>
-          )}
-
           <div className="message-meta">
-            {response.mode === "agent"
-              ? `Agent · ${response.search_trace.length} lượt tra cứu`
-              : "Retrieve trực tiếp"}{" "}
-            · {response.latency_ms}ms
+            <span>
+              {response.mode === "agent" ? `Agent · ${nTraces} lượt tra cứu` : "Retrieve trực tiếp"} ·{" "}
+              {response.latency_ms}ms
+            </span>
+            {hasTrace && (
+              <button
+                className={`trace-chip ${selected ? "active" : ""}`}
+                onClick={onOpenTrace}
+                title="Xem lượt tra cứu và nguồn"
+              >
+                <Search size={12} /> {nTraces}
+                <FileText size={12} /> {nSources}
+              </button>
+            )}
           </div>
         </div>
       </div>
     </div>
-  );
-}
-
-function SourceCard({ index, citation, onClick }: { index: number; citation: Citation; onClick: () => void }) {
-  return (
-    <button className="source-card" onClick={onClick} title="Xem đoạn tài liệu gốc">
-      <span className="source-num">{index}</span>
-      <span className="source-body">
-        <span className="source-doc">{citation.doc}</span>
-        <span className="source-section">{citation.section}</span>
-        <span className="source-snippet">{citation.text.slice(0, 120)}{citation.text.length > 120 ? "…" : ""}</span>
-      </span>
-    </button>
   );
 }

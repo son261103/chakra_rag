@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ArrowUp } from "lucide-react";
 
 interface Props {
   onAsk: (question: string) => void;
@@ -46,7 +47,7 @@ export default function Composer({ onAsk, disabled, asking, ready }: Props) {
           disabled={disabled || !question.trim()}
           title="Gửi (Enter)"
         >
-          ↑
+          <ArrowUp size={17} />
         </button>
       </div>
       <div className="composer-hint">

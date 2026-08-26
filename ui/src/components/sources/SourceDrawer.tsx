@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { getChunk } from "../../api/client";
 import type { ChunkDetail } from "../../api/types";
 
@@ -31,7 +32,9 @@ export default function SourceDrawer({ chunkId, onClose }: Props) {
       <aside className="drawer">
         <div className="drawer-header">
           <h3>Nguồn trích dẫn</h3>
-          <button className="drawer-close" onClick={onClose}>✕</button>
+          <button className="drawer-close" onClick={onClose}>
+            <X size={15} />
+          </button>
         </div>
 
         {error && <div className="error-banner">{error}</div>}

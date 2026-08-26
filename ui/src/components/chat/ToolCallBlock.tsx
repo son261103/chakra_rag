@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronRight, Search } from "lucide-react";
 import type { SearchTraceEntry } from "../../api/types";
 
 interface Props {
@@ -9,32 +10,31 @@ interface Props {
   onCitationClick: (chunkId: string) => void;
 }
 
-/** Một lần gọi tool kiểu Claude: header "Đã dùng search_docs" + query,
- *  bấm mở xem kết quả (các chunk tìm được). */
-export default function ToolCallBlock({ index, trace, running, onCitationClick }: Props) {
+/** Một lần gọi tool kiểu ChatGPT: card bo tròn, query inline, kết quả expandable. */
+export default function ToolCallBlock({ trace, running, onCitationClick }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
     <div className={`tool-block ${running ? "running" : ""}`}>
       <button className="tool-header" onClick={() => setOpen((o) => !o)} disabled={running}>
-        <span className={`tool-chevron ${open ? "open" : ""}`}>▸</span>
-        <span className="tool-icon">🔍</span>
+        <ChevronRight size={14} className={`tool-chevron ${open ? "open" : ""}`} />
+        <Search size={14} className="tool-icon" />
         <span className="tool-title">
-          {running ? "Đang gọi" : "Đã gọi"} <code>search_docs</code> lần {index}
+          {running ? "Đang tìm kiếm…" : "Đã tìm kiếm"}
         </span>
+        {!running && <span className="tool-query-inline">"{trace.query}"</span>}
         {running ? (
           <span className="tool-spinner" />
         ) : (
           <span className="tool-summary">
-            {trace.n_results} kết quả · điểm cao nhất {trace.max_score.toFixed(2)}
+            {trace.n_results} kết quả
           </span>
         )}
       </button>
 
       {!running && (
-        <>
-          <div className="tool-query">"{trace.query}"</div>
-          {open && (
+        <div className={`tool-body ${open ? "open" : ""}`}>
+          <div className="tool-body-inner">
             <div className="tool-results">
               {trace.chunk_ids.filter(Boolean).map((cid) => (
                 <button key={cid} className="tool-result-chip" onClick={() => onCitationClick(cid!)}>
@@ -43,8 +43,8 @@ export default function ToolCallBlock({ index, trace, running, onCitationClick }
               ))}
               {trace.n_results === 0 && <span className="tool-no-result">Không tìm thấy kết quả nào</span>}
             </div>
-          )}
-        </>
+          </div>
+        </div>
       )}
     </div>
   );
