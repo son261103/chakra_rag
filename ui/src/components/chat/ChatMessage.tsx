@@ -32,9 +32,16 @@ export default function ChatMessage({ entry, onCitationClick }: Props) {
       </div>
 
       <div className="assistant-row">
-        <div className="avatar">
-          <Sparkles size={15} />
+        <div className="assistant-header">
+          <div className="avatar">
+            <Sparkles size={13} />
+          </div>
+          <span className="assistant-name">Chakra AI</span>
+          <span className="assistant-badge">
+            {response.mode === "agent" ? "Agent" : "RAG"}
+          </span>
         </div>
+
         <div className="assistant-content">
           {response.reasoning && (
             <ThinkingBlock text={response.reasoning} active={false} durationMs={response.latency_ms} />

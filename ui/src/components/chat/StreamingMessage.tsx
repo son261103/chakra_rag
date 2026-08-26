@@ -30,9 +30,20 @@ export default function StreamingMessage({ state }: Props) {
       </div>
 
       <div className="assistant-row">
-        <div className="avatar">
-          <Sparkles size={15} />
+        <div className="assistant-header">
+          <div className="avatar">
+            <Sparkles size={13} />
+          </div>
+          <span className="assistant-name">Chakra AI</span>
+          <span className="assistant-badge">
+            {thinkingActive
+              ? "Đang suy luận…"
+              : toolCalls.some((t) => t.running)
+                ? "Đang tra cứu…"
+                : "Đang phản hồi…"}
+          </span>
         </div>
+
         <div className="assistant-content">
           {(reasoning || thinkingActive) && (
             <ThinkingBlock text={reasoning} active={thinkingActive} durationMs={thinkingDurationMs} />

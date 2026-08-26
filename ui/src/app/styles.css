@@ -377,15 +377,27 @@
 }
 
 .assistant-row {
-  @apply flex items-start gap-3;
+  @apply flex flex-col gap-2.5 w-full;
+}
+
+.assistant-header {
+  @apply flex items-center gap-2 select-none;
 }
 
 .avatar {
-  @apply grid size-[32px] shrink-0 place-items-center rounded-xl bg-accent text-[15px] text-accent-contrast shadow-sm mt-0.5;
+  @apply grid size-[26px] shrink-0 place-items-center rounded-lg bg-accent text-[13px] text-accent-contrast shadow-xs;
+}
+
+.assistant-name {
+  @apply font-semibold text-[13px] text-text tracking-[-0.01em];
+}
+
+.assistant-badge {
+  @apply rounded-md bg-bg-elevated px-1.5 py-0.5 text-[10.5px] font-mono text-muted;
 }
 
 .assistant-content {
-  @apply flex min-w-0 flex-1 flex-col gap-3;
+  @apply flex min-w-0 w-full flex-col gap-3;
 }
 
 .thinking-text {
