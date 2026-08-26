@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Brain, ChevronRight } from "lucide-react";
+import { Brain, ChevronRight, Loader2 } from "lucide-react";
 
 interface Props {
   text: string;
@@ -28,7 +28,7 @@ export default function ThinkingBlock({ text, active, durationMs }: Props) {
       >
         <div className="collapsible-info-left">
           {active ? (
-            <span className="tool-spinner" />
+            <Loader2 size={14} className="animate-spin text-accent shrink-0" />
           ) : (
             <Brain size={14} className="text-accent shrink-0" />
           )}

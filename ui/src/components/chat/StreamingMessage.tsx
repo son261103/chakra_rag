@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import type { AskResponse, SearchTraceEntry } from "../../api/types";
 import ThinkingBlock from "./ThinkingBlock";
 import ToolTraceGroup from "./ToolTraceGroup";
@@ -71,7 +71,7 @@ export default function StreamingMessage({ state, onComplete }: Props) {
             <div className="collapsible-info-block running">
               <div className="collapsible-info-toggle cursor-default">
                 <div className="collapsible-info-left">
-                  <span className="tool-spinner" />
+                  <Loader2 size={14} className="animate-spin text-accent shrink-0" />
                   <span className="collapsible-info-title">Đang xử lý…</span>
                 </div>
               </div>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, Search } from "lucide-react";
+import { ChevronRight, Loader2, Search } from "lucide-react";
 import type { SearchTraceEntry } from "../../api/types";
 import ToolCallBlock from "./ToolCallBlock";
 
@@ -35,7 +35,7 @@ export default function ToolTraceGroup({ tools, onCitationClick, streaming = fal
       >
         <div className="collapsible-info-left">
           {anyRunning ? (
-            <span className="tool-spinner" />
+            <Loader2 size={14} className="animate-spin text-accent shrink-0" />
           ) : (
             <Search size={14} className="text-accent shrink-0" />
           )}

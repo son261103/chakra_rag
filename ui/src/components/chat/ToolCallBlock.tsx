@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, Search } from "lucide-react";
+import { ChevronRight, Loader2, Search } from "lucide-react";
 import type { SearchTraceEntry } from "../../api/types";
 
 interface Props {
@@ -15,12 +15,17 @@ export default function ToolCallBlock({ trace, running, onCitationClick }: Props
   const [open, setOpen] = useState(false);
 
   return (
-    <div className={`tool-block ${running ? "running" : ""}`}>
-      <button className="tool-header" onClick={() => setOpen((o) => !o)} disabled={running}>
-        <ChevronRight size={14} className={`tool-chevron ${open ? "open" : ""}`} />
-        <Search size={14} className="tool-icon" />
-        <span className="tool-title">
-          {running ? "Đang tìm kiếm…" : "Đã tìm kiếm"}
+    <div className={`tool-block ${open ? "open" : ""} ${running ? "running" : ""}`}>
+      <button
+        type="button"
+        className="tool-header"
+        onClick={() => !running && setOpen((o) => !o)}
+        disabled={running}
+      >
+        <ChevronRight size={13} className={`tool-chevron ${open ? "open" : ""}`} />
+        <Search size={13} className="text-accent shrink-0" />
+        <span className="font-semibold text-text">
+          {running ? "Đang tìm kiếm tài liệu…" : "Đã tìm kiếm"}
         </span>
         {!running && (
           <span className="tool-query-inline" title={trace.query || "Tra cứu tài liệu"}>
@@ -32,7 +37,7 @@ export default function ToolCallBlock({ trace, running, onCitationClick }: Props
           </span>
         )}
         {running ? (
-          <span className="tool-spinner" />
+          <Loader2 size={13} className="animate-spin text-accent shrink-0" />
         ) : (
           <span className="tool-summary">
             {trace.n_results} kết quả
