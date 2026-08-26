@@ -35,13 +35,6 @@ export default function StreamingMessage({ state }: Props) {
             <Sparkles size={13} />
           </div>
           <span className="assistant-name">Chakra AI</span>
-          <span className="assistant-badge">
-            {thinkingActive
-              ? "Đang suy luận…"
-              : toolCalls.some((t) => t.running)
-                ? "Đang tra cứu…"
-                : "Đang phản hồi…"}
-          </span>
         </div>
 
         <div className="assistant-content">

@@ -37,9 +37,6 @@ export default function ChatMessage({ entry, onCitationClick }: Props) {
             <Sparkles size={13} />
           </div>
           <span className="assistant-name">Chakra AI</span>
-          <span className="assistant-badge">
-            {response.mode === "agent" ? "Agent" : "RAG"}
-          </span>
         </div>
 
         <div className="assistant-content">
