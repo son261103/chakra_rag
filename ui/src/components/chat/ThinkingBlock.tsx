@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Brain, ChevronRight } from "lucide-react";
 
 interface Props {
@@ -11,12 +11,8 @@ interface Props {
 
 /** Khối suy luận: cấu trúc đồng bộ 100% với ToolTraceGroup và SourcesBlock. */
 export default function ThinkingBlock({ text, active, durationMs }: Props) {
-  const [open, setOpen] = useState(active);
-
-  useEffect(() => {
-    if (active) setOpen(true);
-    else setOpen(false);
-  }, [active]);
+  // Mặc định luôn đóng gọn 1 dòng — không tự bung ra làm giật/nhảy giao diện
+  const [open, setOpen] = useState(false);
 
   if (!text && !active) return null;
 

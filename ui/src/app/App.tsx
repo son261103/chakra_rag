@@ -85,7 +85,7 @@ export default function App() {
   const [inspectFile, setInspectFile] = useState<FileEntry | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   // Thời điểm bắt đầu suy luận — để tính "Đã suy luận trong Xs".
   const thinkStartRef = useRef<number | null>(null);
   const activeIdRef = useRef<string | null>(null);
@@ -323,9 +323,23 @@ export default function App() {
     setAsking(false);
   };
 
-  // Tin nhắn mới / streaming thay đổi thì cuộn xuống đáy.
+  // Tự động cuộn đáy thông minh: không dùng behavior smooth liên tục để tránh giật/nhảy khung hình
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const el = chatScrollRef.current;
+    if (!el) return;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+
+    // Chỉ tự cuộn nếu người dùng đang ở gần đáy (< 180px)
+    if (distanceFromBottom < 180) {
+      if (streaming) {
+        // Trong khi stream: gán trực tiếp scrollTop để giao diện tĩnh lặng, không rung giật
+        el.scrollTop = el.scrollHeight;
+      } else {
+        // Khi tin nhắn đã chốt hoặc đổi câu hỏi: cuộn mượt
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      }
+    }
   }, [history.length, streaming]);
 
   const error = ingestError ?? askError;
@@ -342,7 +356,7 @@ export default function App() {
       />
 
       <main className="chat-area">
-        <div className="chat-scroll side-scroll">
+        <div ref={chatScrollRef} className="chat-scroll side-scroll">
           {history.length === 0 && !asking && (
             <div className="empty-state">
               <div className="empty-logo">
@@ -387,7 +401,6 @@ export default function App() {
           )}
 
           {error && <div className="error-banner">{error}</div>}
-          <div ref={bottomRef} />
         </div>
 
         <Composer
