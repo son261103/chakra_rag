@@ -63,11 +63,6 @@ export default function Composer({ onAsk, disabled, asking, ready }: Props) {
           <ArrowUp size={17} />
         </button>
       </div>
-      <div className="composer-hint">
-        <span>Câu trả lời luôn kèm trích dẫn nguồn</span>
-        <span>·</span>
-        <span>Enter để gửi, Shift+Enter xuống dòng</span>
-      </div>
     </div>
   );
 }
