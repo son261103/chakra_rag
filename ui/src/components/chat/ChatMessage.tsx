@@ -55,29 +55,6 @@ export default function ChatMessage({ entry, onCitationClick }: Props) {
             onCitationClick={onCitationClick}
           />
 
-          {/* low_confidence chỉ có nghĩa khi đã gọi search_docs — chào hỏi không cảnh báo */}
-          {((response.low_confidence && response.search_trace.length > 0) ||
-            response.unsupported_claims.length > 0 ||
-            response.invalid_citations.length > 0) && (
-            <div className="warnings">
-              {response.low_confidence && response.search_trace.length > 0 && (
-                <span className="badge warn">
-                  <AlertTriangle size={12} /> Độ tin cậy truy xuất thấp
-                </span>
-              )}
-              {response.unsupported_claims.length > 0 && (
-                <span className="badge warn">
-                  <AlertTriangle size={12} /> {response.unsupported_claims.length} câu chưa được nguồn đỡ
-                </span>
-              )}
-              {response.invalid_citations.length > 0 && (
-                <span className="badge error">
-                  <XCircle size={12} /> {response.invalid_citations.length} citation không hợp lệ
-                </span>
-              )}
-            </div>
-          )}
-
           {response.citations.length > 0 && (
             <SourcesBlock citations={response.citations} onCitationClick={onCitationClick} />
           )}
@@ -91,6 +68,34 @@ export default function ChatMessage({ entry, onCitationClick }: Props) {
                 : "Retrieve trực tiếp"}
               {response.latency_ms > 0 && ` · ${latencyDisplay}`}
             </span>
+
+            {((response.low_confidence && nTraces > 0) ||
+              response.unsupported_claims.length > 0 ||
+              response.invalid_citations.length > 0) && (
+              <div className="message-warnings">
+                {response.low_confidence && nTraces > 0 && (
+                  <span className="meta-warn-badge" title="Độ tin cậy truy xuất thấp">
+                    <AlertTriangle size={11} /> Độ tin cậy thấp
+                  </span>
+                )}
+                {response.unsupported_claims.length > 0 && (
+                  <span
+                    className="meta-warn-badge"
+                    title={`${response.unsupported_claims.length} câu trong câu trả lời chưa được nguồn tài liệu đỡ`}
+                  >
+                    <AlertTriangle size={11} /> {response.unsupported_claims.length} câu chưa có nguồn
+                  </span>
+                )}
+                {response.invalid_citations.length > 0 && (
+                  <span
+                    className="meta-error-badge"
+                    title={`${response.invalid_citations.length} citation không hợp lệ`}
+                  >
+                    <XCircle size={11} /> {response.invalid_citations.length} citation lỗi
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

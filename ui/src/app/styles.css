@@ -781,25 +781,20 @@
 }
 
 .message-meta {
-  @apply mt-1 flex items-center justify-between gap-2 text-[11.5px] text-muted;
+  @apply mt-1 flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-muted;
   font-family: var(--font-mono);
 }
 
-/* Chip mở panel tra cứu — nằm ở cuối dòng meta */
-.trace-chip {
-  @apply ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-bg-soft px-2.5 py-1 text-[11px] text-muted transition-all font-sans;
+.message-warnings {
+  @apply ml-auto flex flex-wrap items-center gap-1.5 font-sans;
 }
 
-.trace-chip:hover {
-  @apply bg-bg-elevated text-text border-accent/40;
+.meta-warn-badge {
+  @apply inline-flex items-center gap-1 rounded-md border border-amber/35 bg-amber/10 px-2 py-0.5 text-[10.5px] text-amber font-medium transition-colors;
 }
 
-.trace-chip.active {
-  @apply border-accent/60 bg-accent-soft text-accent;
-}
-
-.trace-chip svg {
-  @apply shrink-0;
+.meta-error-badge {
+  @apply inline-flex items-center gap-1 rounded-md border border-red/35 bg-red/10 px-2 py-0.5 text-[10.5px] text-red font-medium transition-colors;
 }
 
 /* Thinking dots */
