@@ -77,7 +77,6 @@ class AgentResult:
     reasoning: str = ""  # nội dung "suy luận" của model (nếu provider trả về)
     low_confidence: bool = False
     mode: str = "agent"
-    n_tool_calls: int = 0
 
 
 def _build_search_trace(messages: list[BaseMessage]) -> list[dict[str, Any]]:
@@ -234,7 +233,6 @@ class RagAgent:
                 }],
                 low_confidence=True,
                 mode="agent",
-                n_tool_calls=0,
             )
 
         tool_returned = _collect_tool_chunks(messages)
@@ -249,7 +247,6 @@ class RagAgent:
             # không gọi tool thì không có gì để đánh giá → không flag.
             low_confidence=bool(trace) and max_score < self.cfg.min_score,
             mode="agent",
-            n_tool_calls=len(trace),
         )
 
     # ---------- streaming (ChatGPT/Claude-style) ----------
@@ -384,7 +381,6 @@ class RagAgent:
             # Giống ask_agent: không gọi tool thì không có cơ sở để cảnh báo.
             low_confidence=bool(trace) and max_score < self.cfg.min_score,
             mode="agent",
-            n_tool_calls=len(trace),
         )
         try:
             rt = get_current_run_tree()  # root run active while agent.stream runs
@@ -419,7 +415,6 @@ class RagAgent:
             }],
             low_confidence=result.low_confidence,
             mode="stuff",
-            n_tool_calls=1,
         )
 
     def ask(

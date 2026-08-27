@@ -144,7 +144,6 @@ from langgraph.prebuilt import create_react_agent
 def search_docs(query: str, top_k: int = 5) -> str:
     """Tìm kiếm tài liệu nội bộ; trả về các đoạn liên quan kèm chunk_id và điểm."""
     chunks = retrieve(query, top_k)          # hybrid: vector + FTS5 + RRF + threshold
-    log_tool_call(query, top_k, chunks)      # JSONL — logs tự thu, không LangSmith
     return json.dumps(chunks, ensure_ascii=False)
 
 llm = ChatOpenAI(model=cfg.model, base_url=cfg.base_url, temperature=0)
@@ -229,7 +228,7 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 
 **Quyết định cuối cùng**: dùng LangChain + LangGraph để code gọn; observability bằng **LangSmith** khi operator bật (env `LANGSMITH_TRACING`/`LANGSMITH_API_KEY`), mặc định chạy hoàn toàn local không gửi gì. Nguyên tắc xuyên suốt: framework lo phần cơ khí (vòng lặp tool-calling, parse message, prompt template, tracing), **nghiệp vụ chấm điểm phải tự viết** (hybrid retrieval, RRF, citation verifier) — đây là phần thể hiện năng lực và là thứ bị hỏi xoáy khi phỏng vấn.
 
-**Trade-off của LangSmith:** khi bật, trace/feedback được gửi lên SaaS ngoài (LangSmith) — chấp nhận được cho bài này và hữu ích để phân tích chất lượng; không bật thì không có gì rời khỏi máy. `scripts/export_eval_dataset.py` biến production runs thành dataset đánh giá (thay cho `read_all()` của telemetry JSONL cũ).
+**Trade-off của LangSmith:** khi bật, trace/feedback được gửi lên SaaS ngoài (LangSmith) — chấp nhận được cho bài này và hữu ích để phân tích chất lượng; không bật thì không có gì rời khỏi máy. `scripts/export_eval_dataset.py` biến production runs thành dataset đánh giá.
 
 **Dùng gì của LangChain/LangGraph, và vì sao:**
 
@@ -275,7 +274,7 @@ chakra_rag/
 ├── .env.example              # LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, DB_PATH...
 ├── data/docs/*.md            # corpus seed (được đăng ký vào bảng files như file thường)
 ├── data/uploads/             # file người dùng upload qua UI
-├── logs/                    # logs ứng dụng (không còn asks.jsonl tự thu)
+├── logs/                    # logs ứng dụng
 ├── src/chakra_rag/           # tổ chức theo tầng, dependency một chiều từ ngoài vào trong
 │   ├── config.py             # đọc env, dataclass Config
 │   ├── core/                 # nghiệp vụ lõi, không phụ thuộc framework
@@ -345,4 +344,4 @@ Nguyên tắc: **phần lõi xong trước, UI làm sau cùng**. Nếu chậm ti
 - Support check nâng cấp: NLI model hoặc LLM-judge từng claim thay vì n-gram overlap.
 - Semantic chunking + chunk hierarchy (parent-document retrieval).
 - Agent đa tool: thêm `list_documents`, `read_chunk` bên cạnh `search_docs` để agent tự điều hướng khi corpus lớn (hiện tại 1 tool là đủ cho corpus nhỏ) — LangGraph mở rộng việc này tự nhiên.
-- LangSmith nếu làm việc theo team và cần tracing/so sánh prompt tập trung; hiện tại logs JSONL tự thu là đủ.
+- LangSmith: tracing + feedback scores đã tích hợp sẵn (bật qua `LANGSMITH_TRACING`/`LANGSMITH_API_KEY`); có thể mở rộng thêm eval dataset từ production traces (scripts/export_eval_dataset.py) và so sánh prompt tập trung khi làm việc theo team.
