@@ -23,16 +23,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from chakra_rag.config import get_config
-from chakra_rag.ingestion.worker import (
-    SUPPORTED_SUFFIXES,
-    IngestWorker,
-)
+from chakra_rag.ingestion.worker import IngestWorker
 from chakra_rag.observability.logging_setup import setup_logging
 from chakra_rag.service.rag_service import RagService
 
 logger = logging.getLogger(__name__)
-
-ALLOWED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
 @asynccontextmanager
@@ -72,7 +67,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Chakra RAG", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=get_config().api_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -102,8 +97,9 @@ async def upload_file(file: UploadFile):
     worker: IngestWorker = app.state.worker
 
     suffix = (file.filename or "").rsplit(".", 1)[-1]
-    if f".{suffix}".lower() not in SUPPORTED_SUFFIXES:
-        raise HTTPException(400, f"Chỉ hỗ trợ: {', '.join(sorted(SUPPORTED_SUFFIXES))}")
+    supported = get_config().supported_suffixes
+    if f".{suffix}".lower() not in supported:
+        raise HTTPException(400, f"Chỉ hỗ trợ: {', '.join(sorted(supported))}")
 
     content = await file.read()
     if not content.strip():

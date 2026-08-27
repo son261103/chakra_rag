@@ -98,6 +98,7 @@ class RagService:
             agent_result.answer,
             agent_result.tool_returned,
             low_confidence=agent_result.low_confidence,
+            support_threshold=self.cfg.support_threshold,
         )
         latency = elapsed_ms(t0)
 
@@ -186,6 +187,7 @@ class RagService:
             final.answer,
             final.tool_returned,
             low_confidence=final.low_confidence,
+            support_threshold=self.cfg.support_threshold,
         )
         latency = elapsed_ms(t0)
 

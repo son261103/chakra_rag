@@ -68,6 +68,17 @@ class Config:
     # Số lượt user+assistant gần nhất đưa vào multi-turn (mỗi lượt = 1 user + 1 assistant).
     chat_history_turns: int = 8
 
+    # API/CORS
+    api_allowed_origins: list[str] = field(
+        default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
+    )
+    # Ingestion
+    supported_suffixes: set[str] = field(default_factory=lambda: {".md", ".txt", ".pdf"})
+    embed_batch_size: int = 16
+
+    # Verification
+    support_threshold: float = 0.30
+
     def ensure_dirs(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
@@ -98,6 +109,16 @@ def get_config() -> Config:
         min_score=_env_float("MIN_SCORE", 0.25),
         max_agent_turns=_env_int("MAX_AGENT_TURNS", 4),
         chat_history_turns=_env_int("CHAT_HISTORY_TURNS", 8),
+        api_allowed_origins=[
+            s.strip()
+            for s in _env("API_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+            if s.strip()
+        ],
+        supported_suffixes={
+            s.strip().lower() for s in _env("SUPPORTED_SUFFIXES", ".md,.txt,.pdf").split(",") if s.strip()
+        },
+        embed_batch_size=_env_int("EMBED_BATCH_SIZE", 16),
+        support_threshold=_env_float("SUPPORT_THRESHOLD", 0.30),
     )
     cfg.ensure_dirs()
     return cfg

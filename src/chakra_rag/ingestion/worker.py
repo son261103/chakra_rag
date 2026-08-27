@@ -26,9 +26,6 @@ from chakra_rag.storage.store import Store
 
 logger = logging.getLogger(__name__)
 
-EMBED_BATCH_SIZE = 16
-SUPPORTED_SUFFIXES = {".md", ".txt", ".pdf"}
-
 
 def file_id_for(path: Path) -> str:
     """ID ổn định theo tên file (không theo đường dẫn) để seed/upload trùng tên không đụng."""
@@ -178,7 +175,7 @@ class IngestWorker:
             raise FileNotFoundError(
                 f"Không thấy file trên đĩa: {name} (đã thử uploads_dir và docs_dir)"
             )
-        if path.suffix.lower() not in SUPPORTED_SUFFIXES:
+        if path.suffix.lower() not in self.cfg.supported_suffixes:
             raise ValueError(f"Định dạng không hỗ trợ: {path.suffix}")
         logger.info("reingest request file_id=%s name=%s status_was=%s", file_id, name, meta.get("status"))
         new_id = self.enqueue(path, source=source)
@@ -321,8 +318,9 @@ class IngestWorker:
         self.store.upsert_file(fid, doc_name, status="embedding", chunks_total=len(numbered))
 
         done = 0
-        for batch_start in range(0, len(numbered), EMBED_BATCH_SIZE):
-            batch = numbered[batch_start : batch_start + EMBED_BATCH_SIZE]
+        batch_size = self.cfg.embed_batch_size
+        for batch_start in range(0, len(numbered), batch_size):
+            batch = numbered[batch_start : batch_start + batch_size]
             vectors = self.embedder.embed([c.text for _, c in batch])
             for (chunk_id, chunk), vector in zip(batch, vectors):
                 self.store.insert_chunk(
@@ -359,7 +357,7 @@ def ingest_directory_sync(
 ) -> int:
     """Ingest đồng bộ một thư mục (dùng cho CLI / seed corpus). Trả về số file."""
     worker = IngestWorker(cfg, store, embedder)
-    paths = sorted(p for p in directory.iterdir() if p.suffix.lower() in SUPPORTED_SUFFIXES)
+    paths = sorted(p for p in directory.iterdir() if p.suffix.lower() in cfg.supported_suffixes)
     for path in paths:
         fid = worker.enqueue(path, source=source)
         try:

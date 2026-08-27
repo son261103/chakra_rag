@@ -75,6 +75,7 @@ def verify_answer(
     answer: str,
     tool_returned: dict[str, dict[str, Any]],
     low_confidence: bool = False,
+    support_threshold: float = SUPPORT_THRESHOLD,
 ) -> VerifiedAnswer:
     """Hậu kiểm trích dẫn cho một câu trả lời."""
     cited_ids = extract_citations(answer)
@@ -92,7 +93,7 @@ def verify_answer(
         best = max(
             support_score(claim, tool_returned[cid]["text"]) for cid in claim_citations
         )
-        if best < SUPPORT_THRESHOLD:
+        if best < support_threshold:
             unsupported.append(claim)
 
     citations = []

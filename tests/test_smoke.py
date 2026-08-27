@@ -14,6 +14,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from chakra_rag.config import get_config  # noqa: E402
 from chakra_rag.core.chunking import chunk_markdown  # noqa: E402
 from chakra_rag.core.embedding import Embedder  # noqa: E402
 from chakra_rag.ingestion.worker import _assign_chunk_ids  # noqa: E402
@@ -157,3 +158,11 @@ def test_verify_answer_flags_unsupported_claim():
     answer = "Công ty tặng mỗi nhân viên một chiếc xe máy [doc#a#0]."
     verified = verify_answer(answer, tool_returned)
     assert verified.unsupported_claims  # claim không được chunk đỡ
+
+
+def test_config_has_new_fields():
+    cfg = get_config()
+    assert isinstance(cfg.api_allowed_origins, list) and cfg.api_allowed_origins
+    assert cfg.supported_suffixes == {".md", ".txt", ".pdf"}
+    assert cfg.embed_batch_size == 16
+    assert cfg.support_threshold == 0.30
