@@ -157,7 +157,7 @@ câu hỏi
 
 **Vì sao agent + mode stuff?** Agent tự reformulate / multi-hop; stuff rẻ hơn và dùng khi model không tool-call.
 
-**Framework boundary:** LangChain/LangGraph lo cơ chế (agent loop, tool schema, splitter). **Retrieval + RRF + citation verify là code tự viết** — phần thể hiện năng lực. Không dùng LangSmith; log JSONL tự thu (`logs/`).
+**Framework boundary:** LangChain/LangGraph lo cơ chế (agent loop, tool schema, splitter). **Retrieval + RRF + citation verify là code tự viết** — phần thể hiện năng lực. Observability dùng LangSmith (tracing + feedback scores) khi có `LANGSMITH_API_KEY`/`LANGSMITH_TRACING`; không cấu hình thì mọi hook tracing là no-op an toàn.
 
 Cấu trúc code (layered backend):
 
@@ -167,7 +167,7 @@ src/chakra_rag/
   core/          # chunking, embedding, retrieval, llm, agent, verification
   storage/       # SQLite store
   ingestion/     # worker ingest
-  observability/ # telemetry JSONL
+  observability/ # langsmith tracing + timing helpers
   service/       # RagService composition root
   interfaces/    # cli + fastapi
 tests/test_smoke.py

@@ -15,8 +15,9 @@ from chakra_rag.config import Config, get_config
 from chakra_rag.core.embedding import Embedder
 from chakra_rag.core.retrieval import Retriever
 from chakra_rag.storage.store import Store
-from chakra_rag.observability.telemetry import Telemetry, elapsed_ms, timed
 from chakra_rag.core.verification import VerifiedAnswer, verify_answer
+from chakra_rag.observability.timing import elapsed_ms, timed
+from chakra_rag.observability.tracing import submit_feedback, trace_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,6 @@ class RagService:
             min_score=self.cfg.min_score,
         )
         self.agent = RagAgent(self.cfg, self.retriever)
-        self.telemetry = Telemetry(self.cfg.logs_dir)
 
     def _history_for_conversation(self, conversation_id: str | None) -> list[dict[str, str]]:
         if not conversation_id:
@@ -93,7 +93,10 @@ class RagService:
             len(history) // 2,
             question[:120],
         )
-        agent_result: AgentResult = self.agent.ask(question, mode=mode, history=history)
+        agent_cfg = trace_metadata(conversation_id, mode, streamed=False)
+        agent_result: AgentResult = self.agent.ask(
+            question, mode=mode, history=history, config=agent_cfg
+        )
         verified: VerifiedAnswer = verify_answer(
             agent_result.answer,
             agent_result.tool_returned,
@@ -118,23 +121,11 @@ class RagService:
 
         self._persist_turn(conversation_id, question, payload)
 
-        self.telemetry.log_ask(
-            {
-                "question": question,
-                "mode": agent_result.mode,
-                "conversation_id": conversation_id,
-                "tool_calls": [
-                    {"query": t["query"], "n_results": t["n_results"], "max_score": t["max_score"]}
-                    for t in agent_result.search_trace
-                ],
-                "answer": verified.answer,
-                "citations": [c["chunk_id"] for c in verified.citations],
-                "invalid_citations": verified.invalid_citations,
-                "unsupported_claims": verified.unsupported_claims,
-                "low_confidence": verified.low_confidence,
-                "latency_ms": latency,
-            }
-        )
+        submit_feedback("invalid_citations", len(verified.invalid_citations),
+                        comment=", ".join(verified.invalid_citations))
+        submit_feedback("unsupported_claims", len(verified.unsupported_claims),
+                        comment="; ".join(verified.unsupported_claims[:5]))
+        submit_feedback("low_confidence", int(bool(verified.low_confidence)))
         logger.info(
             "ask done mode=%s latency_ms=%d tools=%d citations=%d low_conf=%s",
             agent_result.mode,
@@ -153,7 +144,7 @@ class RagService:
         conversation_id: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         """Streaming version của ask(): pass-through events của agent, cuối cùng
-        verify citations + log telemetry rồi phát event "done" với payload chuẩn.
+        verify citations + submit feedback scores rồi phát event "done" với payload chuẩn.
 
         UI nhận events theo thời gian thực (thinking gõ dần, tool call hiện ngay,
         answer gõ dần) và dùng event "done" để chốt trạng thái cuối.
@@ -170,8 +161,11 @@ class RagService:
             len(history) // 2,
             question[:120],
         )
+        agent_cfg = trace_metadata(conversation_id, mode, streamed=True)
         final: AgentResult | None = None
-        for event in self.agent.stream_agent(question, history=history):
+        for event in self.agent.stream_agent(
+            question, history=history, config=agent_cfg
+        ):
             if event["type"] == "_final":
                 final = event["result"]
                 continue
@@ -207,24 +201,11 @@ class RagService:
 
         self._persist_turn(conversation_id, question, payload)
 
-        self.telemetry.log_ask(
-            {
-                "question": question,
-                "mode": final.mode,
-                "conversation_id": conversation_id,
-                "tool_calls": [
-                    {"query": t["query"], "n_results": t["n_results"], "max_score": t["max_score"]}
-                    for t in final.search_trace
-                ],
-                "answer": verified.answer,
-                "citations": [c["chunk_id"] for c in verified.citations],
-                "invalid_citations": verified.invalid_citations,
-                "unsupported_claims": verified.unsupported_claims,
-                "low_confidence": verified.low_confidence,
-                "latency_ms": latency,
-                "streamed": True,
-            }
-        )
+        submit_feedback("invalid_citations", len(verified.invalid_citations),
+                        comment=", ".join(verified.invalid_citations))
+        submit_feedback("unsupported_claims", len(verified.unsupported_claims),
+                        comment="; ".join(verified.unsupported_claims[:5]))
+        submit_feedback("low_confidence", int(bool(verified.low_confidence)))
         logger.info(
             "ask_stream done mode=%s latency_ms=%d tools=%d citations=%d low_conf=%s",
             final.mode,

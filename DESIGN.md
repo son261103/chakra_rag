@@ -238,16 +238,9 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 | `langchain_openai.ChatOpenAI` | ✅ | Chat model + function calling qua `base_url` cấu hình được (OpenAI/OpenRouter/compatible). |
 | `langchain_text_splitters` | ✅ | `MarkdownHeaderTextSplitter` + `RecursiveCharacterTextSplitter` cho chunking theo cấu trúc — chuẩn, ít code, dễ giải thích tham số. |
 | Vector store abstraction của LangChain | ❌ | sqlite-vec không phải store first-class; hybrid retrieval + RRF là phần tự viết — giữ `store.py`/`retrieve.py` thuần Python để kiểm soát và giải thích được. |
-| **LangSmith** | ❌ | SaaS, cần tài khoản, gửi dữ liệu ra ngoài. Thay bằng `telemetry.py`: log JSONL mỗi lần ask — offline, tự sở hữu, đủ cho UI trace. |
+| **LangSmith** | ✅ | Tracing qua env `LANGSMITH_API_KEY`/`LANGSMITH_TRACING`; `observability/tracing.py` cung cấp client factory lazy (warn-once khi thiếu key), metadata per-invocation và submit feedback scores (invalid_citations/unsupported_claims/low_confidence) lên root run. Không cấu hình → no-op an toàn. |
 
-**Logs tự thu** (`telemetry.py`, thay LangSmith): mỗi lần ask ghi 1 dòng JSONL vào `logs/asks.jsonl`:
-```json
-{"ts": "...", "question": "...", "mode": "agent",
- "tool_calls": [{"query": "...", "top_k": 5, "n_results": 4, "max_score": 0.82}],
- "answer": "...", "citations": ["hoanphi#s2#1"],
- "low_confidence": false, "latency_ms": 2140}
-```
-File này đồng thời là dataset thật để phân tích chất lượng sau này — "tinh thần LangSmith" nhưng tự chủ.
+**Tracing + feedback qua LangSmith** (`observability/tracing.py`): mỗi lần `ask`/`ask_stream` chạy trong một trace (metadata: conversation_id/mode/streamed, tags: sync/stream); `Retriever.search` và tool `search_docs` được decorate `@traceable` tạo child spans; cuối lượt service submit 3 feedback scores lên root run: `invalid_citations` (số cite sai), `unsupported_claims` (số claim thiếu đỡ), `low_confidence` (0/1). Không có `LANGSMITH_API_KEY`/`LANGSMITH_TRACING` thì toàn bộ là no-op an toàn (warn 1 lần nếu bật tracing mà thiếu key). Vẫn giữ `payload_json` trong SQLite cho UI replay lịch sử hội thoại.
 
 **Lưu ý bắt buộc khi dùng framework cho bài test này:**
 - **Pin version** trong `requirements.txt` (họ LangChain đổi API liên tục) — ghi rõ version đã test.
@@ -280,7 +273,7 @@ chakra_rag/
 ├── .env.example              # LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, DB_PATH...
 ├── data/docs/*.md            # corpus seed (được đăng ký vào bảng files như file thường)
 ├── data/uploads/             # file người dùng upload qua UI
-├── logs/asks.jsonl           # logs tự thu (thay LangSmith) — sinh khi chạy
+├── logs/                    # logs ứng dụng (không còn asks.jsonl tự thu)
 ├── src/chakra_rag/           # tổ chức theo tầng, dependency một chiều từ ngoài vào trong
 │   ├── config.py             # đọc env, dataclass Config
 │   ├── core/                 # nghiệp vụ lõi, không phụ thuộc framework
@@ -291,7 +284,8 @@ chakra_rag/
 │   │   └── verification.py   #   citation verification (tự viết — phần chấm điểm)
 │   ├── storage/store.py      # sqlite + vec0 + FTS5 + bảng files
 │   ├── ingestion/worker.py   # worker nền: parse → chunk → embed, cập nhật tiến trình
-│   ├── observability/telemetry.py  # log JSONL mỗi lần ask — logs tự thu
+│   ├── observability/tracing.py  # langsmith client factory, trace metadata, submit feedback
+│   ├── observability/timing.py   # timed()/elapsed_ms() đo latency
 │   ├── service/rag_service.py      # composition root: ask(question) -> Answer
 │   └── interfaces/           # các lối vào, không chứa nghiệp vụ
 │       ├── api.py            #   FastAPI mỏng + CORS + endpoints files/progress

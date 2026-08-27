@@ -14,6 +14,7 @@ from typing import Any
 
 from chakra_rag.core.embedding import Embedder
 from chakra_rag.storage.store import Store
+from langsmith import traceable
 
 
 @dataclass
@@ -71,6 +72,7 @@ class Retriever:
         self.min_score = min_score
         self.use_fts = use_fts
 
+    @traceable(run_type="retriever", name="retrieve_docs")
     def search(self, query: str, top_k: int | None = None) -> RetrievalResult:
         top_k = top_k or self.top_k
         query_vec = self.embedder.embed_one(query)

@@ -22,6 +22,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolMessage
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
+from langsmith import get_current_run_tree, traceable
 
 from chakra_rag.config import Config
 from chakra_rag.core.llm import ThinkingChatOpenAI
@@ -155,6 +156,7 @@ class RagAgent:
             retriever = self.retriever
 
             @tool
+            @traceable(run_type="retriever", name="search_docs_tool")
             def search_docs(query: str, top_k: int = 5) -> str:
                 """Tìm kiếm tài liệu nội bộ. Trả về JSON danh sách các đoạn liên quan kèm chunk_id, nguồn và điểm."""
                 result: RetrievalResult = retriever.search(query, top_k)
@@ -183,15 +185,21 @@ class RagAgent:
         return out
 
     def ask_agent(
-        self, question: str, history: list[dict[str, str]] | None = None
+        self,
+        question: str,
+        history: list[dict[str, str]] | None = None,
+        config: dict | None = None,
     ) -> AgentResult:
         agent = self._get_agent()
         recursion_limit = 2 * self.cfg.max_agent_turns + 1
         messages_in = [*self._history_messages(history), ("user", question)]
+        run_config = {"recursion_limit": recursion_limit}
+        if config:
+            run_config.update(config)
         try:
             result = agent.invoke(
                 {"messages": messages_in},
-                config={"recursion_limit": recursion_limit},
+                config=run_config,
             )
             messages: list[BaseMessage] = result["messages"]
             answer = str(messages[-1].content) if messages else ""
@@ -234,7 +242,10 @@ class RagAgent:
     # ---------- streaming (ChatGPT/Claude-style) ----------
 
     def stream_agent(
-        self, question: str, history: list[dict[str, str]] | None = None
+        self,
+        question: str,
+        history: list[dict[str, str]] | None = None,
+        config: dict | None = None,
     ) -> Iterator[dict[str, Any]]:
         """Stream từng bước của agent loop thay vì chờ kết quả cuối.
 
@@ -267,9 +278,12 @@ class RagAgent:
         turn_is_tool = False
 
         try:
+            run_config = {"recursion_limit": recursion_limit}
+            if config:
+                run_config.update(config)
             for chunk, _meta in agent.stream(
                 {"messages": messages_in},
-                config={"recursion_limit": recursion_limit},
+                config=run_config,
                 stream_mode="messages",
             ):
                 if isinstance(chunk, AIMessageChunk):
@@ -355,6 +369,12 @@ class RagAgent:
             mode="agent",
             n_tool_calls=len(trace),
         )
+        try:
+            rt = get_current_run_tree()  # root run active while agent.stream runs
+            if rt is not None:
+                rt.add_outputs({"answer": result.answer})
+        except Exception:  # noqa: BLE001 — enrichment không được phá streaming
+            pass
         yield {"type": "_final", "result": result}
 
     # ---------- stuff mode (fallback + ablation) ----------
@@ -387,7 +407,8 @@ class RagAgent:
         question: str,
         mode: str = "agent",
         history: list[dict[str, str]] | None = None,
+        config: dict | None = None,
     ) -> AgentResult:
         if mode == "stuff":
             return self.ask_stuff(question)
-        return self.ask_agent(question, history=history)
+        return self.ask_agent(question, history=history, config=config)
