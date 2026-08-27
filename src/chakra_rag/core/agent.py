@@ -31,31 +31,40 @@ from chakra_rag.core.retrieval import RetrievalResult, Retriever
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """\
-Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu nội bộ được cung cấp qua công cụ search_docs.
+SYSTEM_PROMPT = (
+    "Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu nội bộ được cung cấp qua công cụ "
+    "search_docs.\n"
+    "\n"
+    "Quy tắc bắt buộc:\n"
+    "1. Mỗi câu hỏi của người dùng (kể cả câu hỏi tiếp theo trong hội thoại) "
+    "đều PHẢI gọi search_docs trước khi trả lời. Không trả lời chỉ dựa vào "
+    "kiến thức có sẵn hay chỉ dựa vào nội dung chat trước đó.\n"
+    "2. Hội thoại trước chỉ dùng để hiểu ngữ cảnh (người đang hỏi tiếp về ai/cái gì) — "
+    "mọi sự kiện, con số, kỹ năng, kinh nghiệm vẫn phải lấy từ kết quả search_docs "
+    "của lượt này.\n"
+    "3. Mỗi khẳng định trong câu trả lời phải kèm trích dẫn [chunk_id] của đoạn tài liệu "
+    "đỡ cho nó (chunk_id từ tool lượt hiện tại).\n"
+    "4. Chỉ dùng thông tin trong kết quả search_docs. Nếu kết quả không đủ, nói rõ là tài liệu "
+    "không có thông tin này — không suy diễn, không bịa.\n"
+    "5. Trả lời bằng tiếng Việt, ngắn gọn, đi thẳng vào câu hỏi.\n"
+    "6. Nếu cần, gọi search_docs nhiều lần với truy vấn khác nhau để đủ thông tin.\n"
+)
 
-Quy tắc bắt buộc:
-1. Mỗi câu hỏi của người dùng (kể cả câu hỏi tiếp theo trong hội thoại) đều PHẢI gọi search_docs trước khi trả lời. Không trả lời chỉ dựa vào kiến thức có sẵn hay chỉ dựa vào nội dung chat trước đó.
-2. Hội thoại trước chỉ dùng để hiểu ngữ cảnh (người đang hỏi tiếp về ai/cái gì) — mọi sự kiện, con số, kỹ năng, kinh nghiệm vẫn phải lấy từ kết quả search_docs của lượt này.
-3. Mỗi khẳng định trong câu trả lời phải kèm trích dẫn [chunk_id] của đoạn tài liệu đỡ cho nó (chunk_id từ tool lượt hiện tại).
-4. Chỉ dùng thông tin trong kết quả search_docs. Nếu kết quả không đủ, nói rõ là tài liệu không có thông tin này — không suy diễn, không bịa.
-5. Trả lời bằng tiếng Việt, ngắn gọn, đi thẳng vào câu hỏi.
-6. Nếu cần, gọi search_docs nhiều lần với truy vấn khác nhau để đủ thông tin.
-"""
-
-STUFF_PROMPT_TEMPLATE = """\
-Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu nội bộ. Dưới đây là các đoạn tài liệu truy xuất được:
-
-{context}
-
-Quy tắc bắt buộc:
-1. Chỉ trả lời dựa trên các đoạn tài liệu trên.
-2. Mỗi khẳng định phải kèm trích dẫn [chunk_id] của đoạn đỡ cho nó.
-3. Nếu tài liệu không đủ thông tin, nói rõ là không có thông tin — không suy diễn, không bịa.
-4. Trả lời bằng tiếng Việt, ngắn gọn, đi thẳng vào câu hỏi.
-
-Câu hỏi: {question}
-"""
+STUFF_PROMPT_TEMPLATE = (
+    "Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu nội bộ. Dưới đây là các đoạn tài liệu "
+    "truy xuất được:\n"
+    "\n"
+    "{context}\n"
+    "\n"
+    "Quy tắc bắt buộc:\n"
+    "1. Chỉ trả lời dựa trên các đoạn tài liệu trên.\n"
+    "2. Mỗi khẳng định phải kèm trích dẫn [chunk_id] của đoạn đỡ cho nó.\n"
+    "3. Nếu tài liệu không đủ thông tin, nói rõ là không có thông tin — không suy diễn, "
+    "không bịa.\n"
+    "4. Trả lời bằng tiếng Việt, ngắn gọn, đi thẳng vào câu hỏi.\n"
+    "\n"
+    "Câu hỏi: {question}\n"
+)
 
 
 @dataclass
@@ -161,7 +170,7 @@ class RagAgent:
             @tool
             @traceable(run_type="retriever", name="search_docs_tool")
             def search_docs(query: str, top_k: int = 5) -> str:
-                """Tìm kiếm tài liệu nội bộ. Trả về JSON danh sách các đoạn liên quan kèm chunk_id, nguồn và điểm."""
+                """Tìm kiếm tài liệu nội bộ. Trả về JSON danh sách các đoạn liên quan kèm chunk_id, nguồn và điểm."""  # noqa: E501
                 result: RetrievalResult = retriever.search(query, top_k)
                 return json.dumps(result.to_tool_payload(), ensure_ascii=False)
 
@@ -344,7 +353,10 @@ class RagAgent:
                         "query": query,
                         "n_results": len(chunks),
                         "chunk_ids": [c.get("chunk_id") for c in chunks if isinstance(c, dict)],
-                        "max_score": max((c.get("score", 0.0) for c in chunks if isinstance(c, dict)), default=0.0),
+                        "max_score": max(
+                            (c.get("score", 0.0) for c in chunks if isinstance(c, dict)),
+                            default=0.0,
+                        ),
                     }
                     trace.append(entry)
                     yield {"type": "tool_call", "index": len(trace), **entry, "chunks": chunks}
@@ -392,7 +404,9 @@ class RagAgent:
             for c in result.chunks
         )
         llm = self._make_llm()
-        prompt = STUFF_PROMPT_TEMPLATE.format(context=context or "(không có tài liệu nào)", question=question)
+        prompt = STUFF_PROMPT_TEMPLATE.format(
+            context=context or "(không có tài liệu nào)", question=question
+        )
         response = llm.invoke(prompt)
         return AgentResult(
             answer=str(response.content).strip(),

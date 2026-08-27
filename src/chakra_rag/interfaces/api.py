@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,7 +53,8 @@ async def lifespan(app: FastAPI):
     app.state.service = service
     app.state.worker = worker
     logger.info(
-        "API up db=%s uploads=%s chunks=%d files=%d (ready statuses only from previous successful ingest)",
+        "API up db=%s uploads=%s chunks=%d files=%d "
+        "(ready statuses only from previous successful ingest)",
         cfg.db_path,
         cfg.uploads_dir,
         service.store.count_chunks(),
@@ -84,14 +86,41 @@ class CreateConversationRequest(BaseModel):
     title: str = Field(default="Hội thoại mới", min_length=1, max_length=200)
 
 
-@app.get("/health")
-def health():
+class ChunkRef(BaseModel):
+    chunk_id: str
+    doc: str | None = None
+    section: str | None = None
+    score: float | None = None
+    text: str | None = None
+
+
+class AskResponseModel(BaseModel):
+    question: str
+    answer: str
+    mode: str
+    citations: list[ChunkRef]
+    invalid_citations: list[str]
+    unsupported_claims: list[str]
+    search_trace: list[dict[str, Any]]
+    reasoning: str
+    low_confidence: bool
+    latency_ms: int
+    conversation_id: str | None
+
+
+class HealthResponse(BaseModel):
+    status: str
+    chunks: int
+
+
+@app.get("/health", response_model=HealthResponse)
+def health() -> HealthResponse:
     service: RagService = app.state.service
     return {"status": "ok", "chunks": service.store.count_chunks()}
 
 
 @app.post("/files")
-async def upload_file(file: UploadFile):
+async def upload_file(file: UploadFile) -> dict[str, Any]:
     """Lưu file upload và đưa vào hàng đợi ingest."""
     cfg = get_config()
     worker: IngestWorker = app.state.worker
@@ -113,13 +142,13 @@ async def upload_file(file: UploadFile):
 
 
 @app.get("/files")
-def list_files():
+def list_files() -> dict[str, Any]:
     service: RagService = app.state.service
     return {"files": service.store.list_files()}
 
 
 @app.get("/files/{file_id}/chunks")
-def list_file_chunks(file_id: str):
+def list_file_chunks(file_id: str) -> dict[str, Any]:
     """Xem dữ liệu đã ingest (chunks) + full text gốc trên đĩa — UI inspector."""
     from chakra_rag.ingestion.worker import extract_text
 
@@ -170,7 +199,7 @@ def list_file_chunks(file_id: str):
 
 
 @app.post("/files/{file_id}/reingest")
-def reingest_file(file_id: str):
+def reingest_file(file_id: str) -> dict[str, Any]:
     """Nhúng lại (parse → chunk → embed) một file đã có trên đĩa."""
     worker: IngestWorker = app.state.worker
     try:
@@ -183,7 +212,7 @@ def reingest_file(file_id: str):
 
 
 @app.delete("/files/{file_id}")
-def delete_file(file_id: str):
+def delete_file(file_id: str) -> dict[str, Any]:
     """Xóa file khỏi index (+ file trên đĩa nếu nằm trong uploads/docs)."""
     worker: IngestWorker = app.state.worker
     try:
@@ -194,7 +223,7 @@ def delete_file(file_id: str):
 
 
 @app.post("/ingest/reingest")
-def reingest_all():
+def reingest_all() -> dict[str, Any]:
     """Nhúng lại toàn bộ file còn trên đĩa (nút “Nhúng lại RAG” trên UI)."""
     worker: IngestWorker = app.state.worker
     result = worker.requeue_all()
@@ -207,26 +236,28 @@ def reingest_all():
 
 
 @app.get("/ingest/progress")
-def ingest_progress():
+def ingest_progress() -> dict[str, Any]:
     worker: IngestWorker = app.state.worker
     return worker.progress()
 
 
 @app.get("/conversations")
-def list_conversations():
+def list_conversations() -> dict[str, Any]:
     service: RagService = app.state.service
     return {"conversations": service.store.list_conversations()}
 
 
 @app.post("/conversations")
-def create_conversation(req: CreateConversationRequest | None = None):
+def create_conversation(
+    req: CreateConversationRequest | None = None,
+) -> dict[str, Any]:
     service: RagService = app.state.service
     title = (req.title if req else None) or "Hội thoại mới"
     return service.store.create_conversation(title=title)
 
 
 @app.get("/conversations/{conversation_id}")
-def get_conversation(conversation_id: str):
+def get_conversation(conversation_id: str) -> dict[str, Any]:
     service: RagService = app.state.service
     conv = service.store.get_conversation(conversation_id)
     if conv is None:
@@ -236,15 +267,15 @@ def get_conversation(conversation_id: str):
 
 
 @app.delete("/conversations/{conversation_id}")
-def delete_conversation(conversation_id: str):
+def delete_conversation(conversation_id: str) -> dict[str, Any]:
     service: RagService = app.state.service
     if not service.store.delete_conversation(conversation_id):
         raise HTTPException(404, "Không tìm thấy hội thoại")
     return {"ok": True}
 
 
-@app.post("/ask")
-def ask(req: AskRequest):
+@app.post("/ask", response_model=AskResponseModel)
+def ask(req: AskRequest) -> AskResponseModel:
     service: RagService = app.state.service
     progress = app.state.worker.progress()
     if progress["status"] not in ("ready", "partial"):
@@ -290,7 +321,7 @@ def ask_stream(req: AskRequest):
 
 
 @app.get("/chunks/{chunk_id}")
-def get_chunk(chunk_id: str):
+def get_chunk(chunk_id: str) -> dict[str, Any]:
     service: RagService = app.state.service
     chunk = service.get_chunk(chunk_id)
     if chunk is None:

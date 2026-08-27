@@ -10,14 +10,14 @@ import logging
 from collections.abc import Iterator
 from typing import Any
 
-from chakra_rag.core.agent import AgentResult, RagAgent
 from chakra_rag.config import Config, get_config
+from chakra_rag.core.agent import AgentResult, RagAgent
 from chakra_rag.core.embedding import Embedder
 from chakra_rag.core.retrieval import Retriever
-from chakra_rag.storage.store import Store
 from chakra_rag.core.verification import VerifiedAnswer, verify_answer
 from chakra_rag.observability.timing import elapsed_ms, timed
 from chakra_rag.observability.tracing import submit_feedback, trace_metadata
+from chakra_rag.storage.store import Store
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class RagService:
         question: str,
         payload: dict[str, Any],
     ) -> str | None:
-        """Lưu user + assistant vào conversation; auto-title từ câu hỏi đầu. Trả về conversation_id."""
+        """Lưu user + assistant vào conversation; auto-title từ câu hỏi đầu. Trả về conversation_id."""  # noqa: E501
         if not conversation_id:
             return None
         conv = self.store.get_conversation(conversation_id)
@@ -126,7 +126,9 @@ class RagService:
         conversation_id: str | None = None,
     ) -> dict[str, Any]:
         """Hỏi → agent loop → verify citations → log → trả về payload chuẩn."""
-        history = self._prepare_question(question, top_k, conversation_id, mode=mode, log_label="ask")
+        history = self._prepare_question(
+            question, top_k, conversation_id, mode=mode, log_label="ask"
+        )
         t0 = timed()
         agent_cfg = trace_metadata(conversation_id, mode, streamed=False)
         agent_result: AgentResult = self.agent.ask(

@@ -32,7 +32,7 @@ class VerifiedAnswer:
 
     answer: str
     citations: list[dict[str, Any]] = field(default_factory=list)
-    invalid_citations: list[str] = field(default_factory=list)   # cite không tồn tại trong bằng chứng
+    invalid_citations: list[str] = field(default_factory=list)   # cite không tồn tại trong bằng chứng  # noqa: E501
     unsupported_claims: list[str] = field(default_factory=list)  # claim không được chunk đỡ
     low_confidence: bool = False
 

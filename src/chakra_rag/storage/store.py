@@ -21,7 +21,7 @@ import json
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,7 @@ import sqlite_vec
 
 
 def _utcnow_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
 def _new_id() -> str:
@@ -348,7 +348,8 @@ class Store:
             rows = self.conn.execute(
                 """
                 SELECT c.id, c.title, c.created_at, c.updated_at,
-                       (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
+                       (SELECT COUNT(*) FROM messages m
+                        WHERE m.conversation_id = c.id) AS message_count
                 FROM conversations c
                 ORDER BY c.updated_at DESC
                 """
@@ -446,13 +447,19 @@ class Store:
             out.append(item)
         return out
 
-    def list_history_for_llm(self, conversation_id: str, max_turns: int = 8) -> list[dict[str, str]]:
+    def list_history_for_llm(
+        self, conversation_id: str, max_turns: int = 8
+    ) -> list[dict[str, str]]:
         """Lấy tối đa max_turns cặp user/assistant gần nhất (chỉ role + content text)."""
         messages = self.list_messages(conversation_id)
         # Giữ đúng thứ tự thời gian; cắt theo số message (2 * turns).
         limit = max(0, max_turns) * 2
         trimmed = messages[-limit:] if limit else []
-        return [{"role": m["role"], "content": m["content"]} for m in trimmed if m["role"] in ("user", "assistant")]
+        return [
+            {"role": m["role"], "content": m["content"]}
+            for m in trimmed
+            if m["role"] in ("user", "assistant")
+        ]
 
 
 def _fts_escape(query: str) -> str:

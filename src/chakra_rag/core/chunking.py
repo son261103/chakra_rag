@@ -40,7 +40,9 @@ class Chunk:
     char_end: int
 
 
-def chunk_markdown(text: str, doc: str, chunk_size: int = 300, chunk_overlap: int = 50) -> list[Chunk]:
+def chunk_markdown(
+    text: str, doc: str, chunk_size: int = 300, chunk_overlap: int = 50
+) -> list[Chunk]:
     """Cắt một tài liệu markdown thành các Chunk có metadata."""
     header_splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=_HEADING_LEVELS,
@@ -107,7 +109,9 @@ def structure_plain_document(text: str) -> str:
     return structured.strip() + "\n"
 
 
-def chunk_plain_text(text: str, doc: str, chunk_size: int = 300, chunk_overlap: int = 50) -> list[Chunk]:
+def chunk_plain_text(
+    text: str, doc: str, chunk_size: int = 300, chunk_overlap: int = 50
+) -> list[Chunk]:
     """Cắt tài liệu không markdown (txt/pdf đã extract).
 
     Nếu phát hiện tiêu đề cấu trúc → chuyển pseudo-markdown rồi cắt theo section

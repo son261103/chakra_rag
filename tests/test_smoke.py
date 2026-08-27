@@ -17,23 +17,30 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from chakra_rag.config import get_config  # noqa: E402
 from chakra_rag.core.chunking import chunk_markdown  # noqa: E402
 from chakra_rag.core.embedding import Embedder  # noqa: E402
-from chakra_rag.ingestion.worker import _assign_chunk_ids  # noqa: E402
 from chakra_rag.core.retrieval import Retriever, reciprocal_rank_fusion  # noqa: E402
+from chakra_rag.core.verification import (  # noqa: E402
+    extract_citations,
+    support_score,
+    verify_answer,
+)
+from chakra_rag.ingestion.worker import _assign_chunk_ids  # noqa: E402
 from chakra_rag.storage.store import Store  # noqa: E402
-from chakra_rag.core.verification import extract_citations, support_score, verify_answer  # noqa: E402
 
 EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
-SAMPLE_MD = """# Chính sách nghỉ phép
-
-## Số ngày phép năm
-
-Nhân viên chính thức được hưởng 12 ngày phép có lương mỗi năm. Cứ mỗi 3 năm làm việc liên tục, nhân viên được cộng thêm 1 ngày phép.
-
-## Quy trình xin nghỉ phép
-
-Nhân viên phải gửi đơn xin nghỉ phép trên hệ thống nội bộ ít nhất 3 ngày làm việc trước ngày bắt đầu nghỉ.
-"""
+SAMPLE_MD = (
+    "# Chính sách nghỉ phép\n"
+    "\n"
+    "## Số ngày phép năm\n"
+    "\n"
+    "Nhân viên chính thức được hưởng 12 ngày phép có lương mỗi năm. Cứ mỗi 3 năm làm việc "
+    "liên tục, nhân viên được cộng thêm 1 ngày phép.\n"
+    "\n"
+    "## Quy trình xin nghỉ phép\n"
+    "\n"
+    "Nhân viên phải gửi đơn xin nghỉ phép trên hệ thống nội bộ ít nhất 3 ngày làm việc trước "
+    "ngày bắt đầu nghỉ.\n"
+)
 
 
 @pytest.fixture(scope="module")
@@ -71,7 +78,7 @@ def test_chunk_ids_are_stable_and_unique():
 def test_store_roundtrip_and_search(store, embedder):
     chunks = chunk_markdown(SAMPLE_MD, "test.md")
     vectors = embedder.embed([c.text for c in chunks])
-    for (cid, chunk), vec in zip(_assign_chunk_ids(chunks), vectors):
+    for (cid, chunk), vec in zip(_assign_chunk_ids(chunks), vectors, strict=False):
         store.insert_chunk(cid, chunk.doc, chunk.section, chunk.text,
                            chunk.char_start, chunk.char_end, vec)
 
@@ -114,7 +121,7 @@ def test_rrf_fusion_ranks_consensus_first():
 def test_retriever_returns_result_with_confidence(store, embedder):
     chunks = chunk_markdown(SAMPLE_MD, "test.md")
     vectors = embedder.embed([c.text for c in chunks])
-    for (cid, chunk), vec in zip(_assign_chunk_ids(chunks), vectors):
+    for (cid, chunk), vec in zip(_assign_chunk_ids(chunks), vectors, strict=False):
         store.insert_chunk(cid, chunk.doc, chunk.section, chunk.text,
                            chunk.char_start, chunk.char_end, vec)
 
@@ -143,7 +150,13 @@ def test_support_score():
 
 def test_verify_answer_flags_fake_citation():
     tool_returned = {
-        "doc#a#0": {"chunk_id": "doc#a#0", "text": "Mức hoàn tối đa 5.000.000 đồng mỗi khóa.", "doc": "doc.md", "section": "a", "score": 0.8},
+        "doc#a#0": {
+            "chunk_id": "doc#a#0",
+            "text": "Mức hoàn tối đa 5.000.000 đồng mỗi khóa.",
+            "doc": "doc.md",
+            "section": "a",
+            "score": 0.8,
+        },
     }
     answer = "Mức hoàn tối đa là 5.000.000 đồng mỗi khóa [doc#a#0] [doc#b#1]."
     verified = verify_answer(answer, tool_returned)
@@ -153,7 +166,13 @@ def test_verify_answer_flags_fake_citation():
 
 def test_verify_answer_flags_unsupported_claim():
     tool_returned = {
-        "doc#a#0": {"chunk_id": "doc#a#0", "text": "Mức hoàn tối đa 5.000.000 đồng mỗi khóa.", "doc": "doc.md", "section": "a", "score": 0.8},
+        "doc#a#0": {
+            "chunk_id": "doc#a#0",
+            "text": "Mức hoàn tối đa 5.000.000 đồng mỗi khóa.",
+            "doc": "doc.md",
+            "section": "a",
+            "score": 0.8,
+        },
     }
     answer = "Công ty tặng mỗi nhân viên một chiếc xe máy [doc#a#0]."
     verified = verify_answer(answer, tool_returned)

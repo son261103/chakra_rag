@@ -1,7 +1,7 @@
 """RagService không còn phụ thuộc Telemetry; feedback được gọi với đúng metrics."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -37,7 +37,9 @@ def make_service(tmp_path, monkeypatch):
 
 class FakeAgentResult:
     answer = "trả lời [a1]"
-    tool_returned = {"a1": {"chunk_id": "a1", "doc": "d", "section": "s", "text": "trả lời", "score": 0.9}}
+    tool_returned = {
+        "a1": {"chunk_id": "a1", "doc": "d", "section": "s", "text": "trả lời", "score": 0.9}
+    }
     search_trace = []
     reasoning = ""
     low_confidence = False

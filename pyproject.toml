@@ -26,10 +26,17 @@ dependencies = [
 # Lockfile consistency: everything resolvable from pyproject alone.
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "ruff"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]  # rootdir on sys.path — cho import scripts/ từ tests
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
 
 [build-system]
 requires = ["hatchling"]

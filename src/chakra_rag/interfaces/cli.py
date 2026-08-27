@@ -43,7 +43,10 @@ def cmd_ask(args: argparse.Namespace) -> None:
         if result["search_trace"]:
             print("\nAgent đã tìm kiếm:")
             for t in result["search_trace"]:
-                print(f"  🔍 \"{t['query']}\" → {t['n_results']} kết quả (max score {t['max_score']:.2f})")
+                print(
+                    f"  🔍 \"{t['query']}\" → {t['n_results']} kết quả "
+                    f"(max score {t['max_score']:.2f})"
+                )
         if result["low_confidence"]:
             print("\n⚠️  Độ tin cậy thấp — kết quả truy xuất dưới ngưỡng.")
         if result["unsupported_claims"]:

@@ -19,8 +19,8 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-from chakra_rag.core.chunking import Chunk, chunk_markdown, chunk_plain_text
 from chakra_rag.config import Config
+from chakra_rag.core.chunking import Chunk, chunk_markdown, chunk_plain_text
 from chakra_rag.core.embedding import Embedder
 from chakra_rag.storage.store import Store
 
@@ -177,7 +177,12 @@ class IngestWorker:
             )
         if path.suffix.lower() not in self.cfg.supported_suffixes:
             raise ValueError(f"Định dạng không hỗ trợ: {path.suffix}")
-        logger.info("reingest request file_id=%s name=%s status_was=%s", file_id, name, meta.get("status"))
+        logger.info(
+            "reingest request file_id=%s name=%s status_was=%s",
+            file_id,
+            name,
+            meta.get("status"),
+        )
         new_id = self.enqueue(path, source=source)
         return {"file_id": new_id, "name": name, "status": "queued", "path": str(path)}
 
@@ -190,8 +195,12 @@ class IngestWorker:
             source = meta.get("source") or "upload"
             path = self.resolve_path(name, source)
             if path is None:
-                logger.warning("reingest-all skip missing name=%s file_id=%s", name, meta["file_id"])
-                skipped.append({"file_id": meta["file_id"], "name": name, "reason": "missing_on_disk"})
+                logger.warning(
+                    "reingest-all skip missing name=%s file_id=%s", name, meta["file_id"]
+                )
+                skipped.append(
+                    {"file_id": meta["file_id"], "name": name, "reason": "missing_on_disk"}
+                )
                 continue
             fid = self.enqueue(path, source=source)
             queued.append({"file_id": fid, "name": name, "status": "queued"})
@@ -322,7 +331,7 @@ class IngestWorker:
         for batch_start in range(0, len(numbered), batch_size):
             batch = numbered[batch_start : batch_start + batch_size]
             vectors = self.embedder.embed([c.text for _, c in batch])
-            for (chunk_id, chunk), vector in zip(batch, vectors):
+            for (chunk_id, chunk), vector in zip(batch, vectors, strict=False):
                 self.store.insert_chunk(
                     chunk_id=chunk_id,
                     doc=chunk.doc,

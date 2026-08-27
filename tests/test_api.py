@@ -1,0 +1,82 @@
+"""FastAPI TestClient suite — index gating, upload validation, conversations CRUD-lite."""
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+import pytest
+from fastapi.testclient import TestClient
+
+from chakra_rag.interfaces import api as api_mod
+
+
+@pytest.fixture()
+def client(tmp_path):
+    """App instance với lifespan mocked: no real store/embedder/worker threads."""
+    app = api_mod.app
+    service = MagicMock(name="service")
+    worker = MagicMock(name="worker")
+    service.store.count_chunks.return_value = 7
+    service.store.list_files.return_value = []
+    service.store.list_conversations.return_value = []
+    service.store.create_conversation.return_value = {"id": "c1", "title": "Hội thoại mới"}
+    worker.progress.return_value = {
+        "status": "ready",
+        "percent": 100,
+        "chunks_done": 1,
+        "chunks_total": 1,
+    }
+    # bypass lifespan init entirely:
+    app.router.lifespan_context = _StaticLifespan(app, service=service, worker=worker)
+    with TestClient(app) as c:
+        c.service = service  # type: ignore[attr-defined]
+        c.worker = worker  # type: ignore[attr-defined]
+        yield c
+
+
+class _StaticLifespan:
+    def __init__(self, app, service, worker):
+        self.app = app
+        self.service = service
+        self.worker = worker
+
+    def __call__(self, app):
+        # Starlette gọi lifespan_context(app) — trả về chính instance (async CM)
+        return self
+
+    async def __aenter__(self):
+        self.app.state.service = self.service
+        self.app.state.worker = self.worker
+        return None
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+def test_health(client):
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok", "chunks": 7}
+
+
+def test_upload_rejects_bad_suffix(client):
+    r = client.post("/files", files={"file": ("x.exe", b"MZ", "application/x-msdownload")})
+    assert r.status_code == 400
+
+
+def test_upload_accepts_md(client):
+    client.worker.enqueue.return_value = "fid1"
+    r = client.post("/files", files={"file": ("notes.md", b"# hi", "text/markdown")})
+    assert r.status_code == 200
+    assert r.json()["file_id"] == "fid1"
+
+
+def test_ask_503_when_index_not_ready(client):
+    client.worker.progress.return_value = {"status": "parsing"}
+    r = client.post("/ask", json={"question": "hi?"})
+    assert r.status_code == 503
+
+
+def test_conversations_roundtrip(client):
+    r = client.post("/conversations", json={"title": "abc"})
+    assert r.status_code == 200
+    assert r.json()["id"] == "c1"

@@ -12,9 +12,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from langsmith import traceable
+
 from chakra_rag.core.embedding import Embedder
 from chakra_rag.storage.store import Store
-from langsmith import traceable
 
 
 @dataclass

@@ -24,7 +24,9 @@ logger = logging.getLogger(__name__)
 class ThinkingChatOpenAI(ChatOpenAI):
     """ChatOpenAI có pass-through `reasoning_content` (nhận về + gửi lại)."""
 
-    def _convert_chunk_to_generation_chunk(self, chunk: Any, default_chunk_class: Any, base_generation_info: Any):
+    def _convert_chunk_to_generation_chunk(
+        self, chunk: Any, default_chunk_class: Any, base_generation_info: Any
+    ):
         """Bản chuẩn bỏ qua `reasoning_content` trong delta khi stream — giữ lại nó."""
         generation_chunk = super()._convert_chunk_to_generation_chunk(
             chunk, default_chunk_class, base_generation_info
@@ -49,22 +51,28 @@ class ThinkingChatOpenAI(ChatOpenAI):
                 if isinstance(response, dict)
                 else response.model_dump(warnings=False)
             )
-        except Exception:  # noqa: BLE001 — payload lạ từ provider: bỏ qua reasoning, không chặn flow chính
-            logger.debug("reasoning_content extraction skipped: unexpected response shape", exc_info=True)
+        except Exception:  # noqa: BLE001
+            # Payload lạ từ provider: bỏ qua reasoning, không chặn flow chính
+            logger.debug(
+                "reasoning_content extraction skipped: unexpected response shape",
+                exc_info=True,
+            )
             return result
-        for choice, gen in zip(raw.get("choices") or [], result.generations):
+        for choice, gen in zip(raw.get("choices") or [], result.generations, strict=False):
             reasoning = (choice.get("message") or {}).get("reasoning_content")
             if reasoning:
                 gen.message.additional_kwargs["reasoning_content"] = reasoning
         return result
 
-    def _get_request_payload(self, input_: Any, *, stop: list[str] | None = None, **kwargs: Any) -> dict:
+    def _get_request_payload(
+        self, input_: Any, *, stop: list[str] | None = None, **kwargs: Any
+    ) -> dict:
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
         raw_messages = payload.get("messages")
         if not isinstance(raw_messages, list):
             return payload  # responses API hoặc payload lạ — không đụng vào
         originals = self._convert_input(input_).to_messages()
-        for raw_msg, orig in zip(raw_messages, originals):
+        for raw_msg, orig in zip(raw_messages, originals, strict=False):
             if not isinstance(orig, AIMessage) or not isinstance(raw_msg, dict):
                 continue
             reasoning = orig.additional_kwargs.get("reasoning_content")

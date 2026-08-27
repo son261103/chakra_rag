@@ -115,7 +115,9 @@ def get_config() -> Config:
             if s.strip()
         ],
         supported_suffixes={
-            s.strip().lower() for s in _env("SUPPORTED_SUFFIXES", ".md,.txt,.pdf").split(",") if s.strip()
+            s.strip().lower()
+            for s in _env("SUPPORTED_SUFFIXES", ".md,.txt,.pdf").split(",")
+            if s.strip()
         },
         embed_batch_size=_env_int("EMBED_BATCH_SIZE", 16),
         support_threshold=_env_float("SUPPORT_THRESHOLD", 0.30),
