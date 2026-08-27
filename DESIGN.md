@@ -225,9 +225,11 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 - **Gọi API**: `fetch` thuần (không cần axios) tới `POST /files`, `GET /ingest/progress`, `POST /ask`, `GET /chunks/{id}`; dev proxy trong `vite.config.ts` trỏ `/api` → `localhost:8000` để khỏi lo CORS khi dev. Polling đơn giản bằng `setInterval` — không cần WebSocket cho quy mô này.
 - **Không làm**: auth, state management phức tạp, routing, deploy. Nếu thời gian quá hẹp, bỏ hẳn UI — CLI + API vẫn đáp ứng đủ đề bài.
 
-### 3.10 Chọn framework: dùng LangChain + LangGraph, KHÔNG dùng LangSmith (logs tự thu)
+### 3.10 Chọn framework: dùng LangChain + LangGraph; observability qua LangSmith (tùy chọn)
 
-**Quyết định cuối cùng**: dùng LangChain + LangGraph để code gọn; bỏ LangSmith, observability bằng **logs JSONL tự thu**. Nguyên tắc xuyên suốt: framework lo phần cơ khí (vòng lặp tool-calling, parse message, prompt template), **nghiệp vụ chấm điểm phải tự viết** (hybrid retrieval, RRF, citation verifier) — đây là phần thể hiện năng lực và là thứ bị hỏi xoáy khi phỏng vấn.
+**Quyết định cuối cùng**: dùng LangChain + LangGraph để code gọn; observability bằng **LangSmith** khi operator bật (env `LANGSMITH_TRACING`/`LANGSMITH_API_KEY`), mặc định chạy hoàn toàn local không gửi gì. Nguyên tắc xuyên suốt: framework lo phần cơ khí (vòng lặp tool-calling, parse message, prompt template, tracing), **nghiệp vụ chấm điểm phải tự viết** (hybrid retrieval, RRF, citation verifier) — đây là phần thể hiện năng lực và là thứ bị hỏi xoáy khi phỏng vấn.
+
+**Trade-off của LangSmith:** khi bật, trace/feedback được gửi lên SaaS ngoài (LangSmith) — chấp nhận được cho bài này và hữu ích để phân tích chất lượng; không bật thì không có gì rời khỏi máy. `scripts/export_eval_dataset.py` biến production runs thành dataset đánh giá (thay cho `read_all()` của telemetry JSONL cũ).
 
 **Dùng gì của LangChain/LangGraph, và vì sao:**
 
