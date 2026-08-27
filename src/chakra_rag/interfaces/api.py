@@ -137,9 +137,12 @@ def list_file_chunks(file_id: str):
     else:
         try:
             full_text = extract_text(path)
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, ValueError, RuntimeError) as exc:
             full_text_error = str(exc)
             logger.warning("inspect extract failed file_id=%s err=%s", file_id, exc)
+        except Exception as exc:  # noqa: BLE001 — parser libs raise misc; log & degrade
+            full_text_error = f"{type(exc).__name__}: {exc}"
+            logger.warning("inspect extract failed (unexpected) file_id=%s", file_id, exc_info=True)
     logger.info(
         "inspect file_id=%s name=%s chunks=%d full_chars=%d status=%s",
         file_id,

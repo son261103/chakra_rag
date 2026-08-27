@@ -362,6 +362,7 @@ def ingest_directory_sync(
         fid = worker.enqueue(path, source=source)
         try:
             worker._process_file(path)  # noqa: SLF001 — chạy đồng bộ, không qua thread
-        except Exception as exc:  # noqa: BLE001
-            store.set_file_status(fid, "failed", error=str(exc))
+        except Exception as exc:  # noqa: BLE001 — file lỗi không chặn các file sau
+            logger.exception("sync ingest failed name=%s", path.name)
+            store.set_file_status(fid, "failed", error=f"{type(exc).__name__}: {exc}")
     return len(paths)

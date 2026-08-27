@@ -12,10 +12,13 @@ cần tắt thinking mode, cứ đi thẳng chuẩn OpenAI-compatible.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_openai import ChatOpenAI
+
+logger = logging.getLogger(__name__)
 
 
 class ThinkingChatOpenAI(ChatOpenAI):
@@ -46,7 +49,8 @@ class ThinkingChatOpenAI(ChatOpenAI):
                 if isinstance(response, dict)
                 else response.model_dump(warnings=False)
             )
-        except Exception:  # noqa: BLE001 — response lạ thì bỏ qua, không chặn flow chính
+        except Exception:  # noqa: BLE001 — payload lạ từ provider: bỏ qua reasoning, không chặn flow chính
+            logger.debug("reasoning_content extraction skipped: unexpected response shape", exc_info=True)
             return result
         for choice, gen in zip(raw.get("choices") or [], result.generations):
             reasoning = (choice.get("message") or {}).get("reasoning_content")

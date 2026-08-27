@@ -15,6 +15,7 @@ Guardrails:
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -27,6 +28,8 @@ from langsmith import get_current_run_tree, traceable
 from chakra_rag.config import Config
 from chakra_rag.core.llm import ThinkingChatOpenAI
 from chakra_rag.core.retrieval import RetrievalResult, Retriever
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
 Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu nội bộ được cung cấp qua công cụ search_docs.
@@ -203,7 +206,8 @@ class RagAgent:
             )
             messages: list[BaseMessage] = result["messages"]
             answer = str(messages[-1].content) if messages else ""
-        except Exception as exc:  # noqa: BLE001 — GraphRecursionError, lỗi provider v.v.
+        except Exception as exc:  # noqa: BLE001 — mọi lỗi đều phải degrade an toàn, không crash
+            logger.exception("agent loop failed — fallback to direct retrieve")
             # Quá lượt hoặc lỗi runtime: không có messages hoàn chỉnh.
             # Trả về câu trả lời an toàn dựa trên 1 lượt retrieve trực tiếp.
             fallback = self.retriever.search(question)
@@ -354,7 +358,8 @@ class RagAgent:
                     tool_started.clear()
                     turn_is_tool = False
                     pending_content = []
-        except Exception as exc:  # noqa: BLE001 — GraphRecursionError, lỗi provider v.v.
+        except Exception as exc:  # noqa: BLE001 — stream lỗi phải báo UI, không crash server
+            logger.exception("agent stream failed")
             yield {"type": "error", "message": str(exc)}
             return
 
