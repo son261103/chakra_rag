@@ -73,6 +73,51 @@ class RagService:
             self.store.rename_conversation(conversation_id, title or "Hội thoại mới")
         return conversation_id
 
+    def _prepare_question(
+        self,
+        question: str,
+        top_k: int | None,
+        conversation_id: str | None,
+        *,
+        mode: str,
+        log_label: str,
+    ) -> list[dict[str, str]]:
+        """Prelude chung cho ask/ask_stream: clamp top_k + lấy history + log start."""
+        if top_k:
+            self.retriever.top_k = top_k
+        history = self._history_for_conversation(conversation_id)
+        logger.info(
+            "%s start mode=%s conv=%s history_turns=%d q=%r",
+            log_label,
+            mode,
+            conversation_id,
+            len(history) // 2,
+            question[:120],
+        )
+        return history
+
+    def _build_payload(
+        self,
+        question: str,
+        verified: VerifiedAnswer,
+        result: AgentResult,
+        latency_ms: int,
+        conversation_id: str | None,
+    ) -> dict[str, Any]:
+        return {
+            "question": question,
+            "answer": verified.answer,
+            "mode": result.mode,
+            "citations": verified.citations,
+            "invalid_citations": verified.invalid_citations,
+            "unsupported_claims": verified.unsupported_claims,
+            "search_trace": result.search_trace,
+            "reasoning": result.reasoning,
+            "low_confidence": verified.low_confidence,
+            "latency_ms": latency_ms,
+            "conversation_id": conversation_id,
+        }
+
     def ask(
         self,
         question: str,
@@ -81,18 +126,8 @@ class RagService:
         conversation_id: str | None = None,
     ) -> dict[str, Any]:
         """Hỏi → agent loop → verify citations → log → trả về payload chuẩn."""
-        if top_k:
-            self.retriever.top_k = top_k
-
-        history = self._history_for_conversation(conversation_id)
+        history = self._prepare_question(question, top_k, conversation_id, mode=mode, log_label="ask")
         t0 = timed()
-        logger.info(
-            "ask start mode=%s conv=%s history_turns=%d q=%r",
-            mode,
-            conversation_id,
-            len(history) // 2,
-            question[:120],
-        )
         agent_cfg = trace_metadata(conversation_id, mode, streamed=False)
         agent_result: AgentResult = self.agent.ask(
             question, mode=mode, history=history, config=agent_cfg
@@ -105,19 +140,7 @@ class RagService:
         )
         latency = elapsed_ms(t0)
 
-        payload = {
-            "question": question,
-            "answer": verified.answer,
-            "mode": agent_result.mode,
-            "citations": verified.citations,
-            "invalid_citations": verified.invalid_citations,
-            "unsupported_claims": verified.unsupported_claims,
-            "search_trace": agent_result.search_trace,
-            "reasoning": agent_result.reasoning,
-            "low_confidence": verified.low_confidence,
-            "latency_ms": latency,
-            "conversation_id": conversation_id,
-        }
+        payload = self._build_payload(question, verified, agent_result, latency, conversation_id)
 
         self._persist_turn(conversation_id, question, payload)
 
@@ -149,18 +172,10 @@ class RagService:
         UI nhận events theo thời gian thực (thinking gõ dần, tool call hiện ngay,
         answer gõ dần) và dùng event "done" để chốt trạng thái cuối.
         """
-        if top_k:
-            self.retriever.top_k = top_k
-
-        history = self._history_for_conversation(conversation_id)
-        t0 = timed()
-        logger.info(
-            "ask_stream start mode=%s conv=%s history_turns=%d q=%r",
-            mode,
-            conversation_id,
-            len(history) // 2,
-            question[:120],
+        history = self._prepare_question(
+            question, top_k, conversation_id, mode=mode, log_label="ask_stream"
         )
+        t0 = timed()
         agent_cfg = trace_metadata(conversation_id, mode, streamed=True)
         final: AgentResult | None = None
         for event in self.agent.stream_agent(
@@ -185,19 +200,7 @@ class RagService:
         )
         latency = elapsed_ms(t0)
 
-        payload = {
-            "question": question,
-            "answer": verified.answer,
-            "mode": final.mode,
-            "citations": verified.citations,
-            "invalid_citations": verified.invalid_citations,
-            "unsupported_claims": verified.unsupported_claims,
-            "search_trace": final.search_trace,
-            "reasoning": final.reasoning,
-            "low_confidence": verified.low_confidence,
-            "latency_ms": latency,
-            "conversation_id": conversation_id,
-        }
+        payload = self._build_payload(question, verified, final, latency, conversation_id)
 
         self._persist_turn(conversation_id, question, payload)
 
