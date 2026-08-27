@@ -41,18 +41,26 @@ def test_submit_feedback_calls_client(monkeypatch):
     fake_client.create_project.return_value.id = "proj-1"
     import chakra_rag.observability.tracing as tracing_mod
     with patch("chakra_rag.observability.tracing.get_current_run_tree", return_value=fake_rt):
-        old = tracing_mod._client_cache
+        old_client = tracing_mod._client_cache
+        old_projects = dict(tracing_mod._project_cache)
         tracing_mod._client_cache = fake_client
+        tracing_mod._project_cache = {}
         try:
             submit_feedback(key="low_confidence", score=1, comment="below threshold")
+            submit_feedback(key="low_confidence", score=1)  # cùng session → không tạo project lại
         finally:
-            tracing_mod._client_cache = old
-    kwargs = fake_client.create_feedback.call_args.kwargs
-    assert kwargs["key"] == "low_confidence"
-    assert kwargs["score"] == 1
-    assert kwargs["run_id"] == "run-1"
-    assert kwargs["trace_id"] == "trace-1"
-    assert kwargs["session_id"] == "proj-1"
+            tracing_mod._client_cache = old_client
+            tracing_mod._project_cache = old_projects
+    first_kwargs = fake_client.create_feedback.call_args_list[0].kwargs
+    assert first_kwargs["key"] == "low_confidence"
+    assert first_kwargs["score"] == 1
+    assert first_kwargs["run_id"] == "run-1"
+    assert first_kwargs["trace_id"] == "trace-1"
+    assert first_kwargs["session_id"] == "proj-1"
+    # caching: create_project chỉ gọi 1 lần cho cùng session name
+    assert fake_client.create_project.call_count == 1
+    assert fake_client.create_feedback.call_count == 2
+    assert fake_client.create_feedback.call_args_list[1].kwargs["session_id"] == "proj-1"
 
 
 def test_ls_client_warns_once_when_tracing_without_key(caplog, monkeypatch):

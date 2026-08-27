@@ -118,6 +118,14 @@ class RagService:
             "conversation_id": conversation_id,
         }
 
+    def _submit_quality_feedback(self, verified: VerifiedAnswer) -> None:
+        """Ghi 3 feedback scores lên root run LangSmith (no-op khi chưa cấu hình)."""
+        submit_feedback("invalid_citations", len(verified.invalid_citations),
+                        comment=", ".join(verified.invalid_citations))
+        submit_feedback("unsupported_claims", len(verified.unsupported_claims),
+                        comment="; ".join(verified.unsupported_claims[:5]))
+        submit_feedback("low_confidence", int(bool(verified.low_confidence)))
+
     def ask(
         self,
         question: str,
@@ -146,11 +154,7 @@ class RagService:
 
         self._persist_turn(conversation_id, question, payload)
 
-        submit_feedback("invalid_citations", len(verified.invalid_citations),
-                        comment=", ".join(verified.invalid_citations))
-        submit_feedback("unsupported_claims", len(verified.unsupported_claims),
-                        comment="; ".join(verified.unsupported_claims[:5]))
-        submit_feedback("low_confidence", int(bool(verified.low_confidence)))
+        self._submit_quality_feedback(verified)
         logger.info(
             "ask done mode=%s latency_ms=%d tools=%d citations=%d low_conf=%s",
             agent_result.mode,
@@ -206,11 +210,7 @@ class RagService:
 
         self._persist_turn(conversation_id, question, payload)
 
-        submit_feedback("invalid_citations", len(verified.invalid_citations),
-                        comment=", ".join(verified.invalid_citations))
-        submit_feedback("unsupported_claims", len(verified.unsupported_claims),
-                        comment="; ".join(verified.unsupported_claims[:5]))
-        submit_feedback("low_confidence", int(bool(verified.low_confidence)))
+        self._submit_quality_feedback(verified)
         logger.info(
             "ask_stream done mode=%s latency_ms=%d tools=%d citations=%d low_conf=%s",
             final.mode,

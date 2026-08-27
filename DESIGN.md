@@ -243,6 +243,8 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 
 **Tracing + feedback qua LangSmith** (`observability/tracing.py`): mỗi lần `ask`/`ask_stream` chạy trong một trace (metadata: conversation_id/mode/streamed, tags: sync/stream); `Retriever.search` và tool `search_docs` được decorate `@traceable` tạo child spans; cuối lượt service submit 3 feedback scores lên root run: `invalid_citations` (số cite sai), `unsupported_claims` (số claim thiếu đỡ), `low_confidence` (0/1). Không có `LANGSMITH_API_KEY`/`LANGSMITH_TRACING` thì toàn bộ là no-op an toàn (warn 1 lần nếu bật tracing mà thiếu key). Vẫn giữ `payload_json` trong SQLite cho UI replay lịch sử hội thoại.
 
+**Hạn chế đã biết:** mode `stuff` (fallback/ablation, đi qua `RagAgent.ask_stuff`) không thread trace config nên trace của nó thiếu metadata conversation/mode/streamed. Chỉ ảnh hưởng đường fallback/stuff; agent-mode (`ask_agent`/`stream_agent`) mang đủ metadata. Cố tình không wiring thêm code — chấp nhận vì stuff chỉ là fallback khi model không tool-call.
+
 **Lưu ý bắt buộc khi dùng framework cho bài test này:**
 - **Pin version** trong `requirements.txt` (họ LangChain đổi API liên tục) — ghi rõ version đã test.
 - Đề yêu cầu *giải thích được mọi quyết định và mã nguồn* → phải nắm được những gì diễn ra **bên trong** `create_react_agent`: nó là graph 2 node (model → tools) lặp cho đến khi AIMessage không còn `tool_calls`; `recursion_limit` đếm số bước graph (mỗi lượt tool = 2 bước). Không nắm được điều này thì dùng framework thành điểm trừ.

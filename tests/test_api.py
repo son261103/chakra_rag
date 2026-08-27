@@ -25,12 +25,16 @@ def client(tmp_path):
         "chunks_done": 1,
         "chunks_total": 1,
     }
-    # bypass lifespan init entirely:
+    # bypass lifespan init entirely; restore original after tests:
+    original_lifespan = app.router.lifespan_context
     app.router.lifespan_context = _StaticLifespan(app, service=service, worker=worker)
-    with TestClient(app) as c:
-        c.service = service  # type: ignore[attr-defined]
-        c.worker = worker  # type: ignore[attr-defined]
-        yield c
+    try:
+        with TestClient(app) as c:
+            c.service = service  # type: ignore[attr-defined]
+            c.worker = worker  # type: ignore[attr-defined]
+            yield c
+    finally:
+        app.router.lifespan_context = original_lifespan
 
 
 class _StaticLifespan:

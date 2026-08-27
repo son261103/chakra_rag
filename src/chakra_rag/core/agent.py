@@ -388,7 +388,6 @@ class RagAgent:
                 rt.add_outputs({"answer": result.answer})
         except Exception:  # noqa: BLE001 — enrichment không được phá streaming
             logger.debug("trace enrichment skipped", exc_info=True)
-            pass
         yield {"type": "_final", "result": result}
 
     # ---------- stuff mode (fallback + ablation) ----------

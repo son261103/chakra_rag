@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _client_cache: Any = None  # langsmith.Client | None — lazy singleton
 _warned_unconfigured: bool = False  # warn 1 lần/process nếu TRACING=true mà thiếu API key
+_project_cache: dict[str, str] = {}  # session_name -> project_id (tránh create_project lặp)
 
 
 def _tracing_requested() -> bool:
@@ -80,13 +81,18 @@ def submit_feedback(key: str, score: float | int | bool, comment: str = "") -> N
         rt = get_current_run_tree()
         if rt is None:
             return
+        session_name = rt.session_name
+        project_id = _project_cache.get(session_name)
+        if project_id is None:
+            project_id = client.create_project(project_name=session_name, upsert=True).id
+            _project_cache[session_name] = project_id
         client.create_feedback(
             key=key,
             score=score,
             comment=comment,
             run_id=rt.id,
             trace_id=rt.trace_id,
-            session_id=client.create_project(project_name=rt.session_name, upsert=True).id,
+            session_id=project_id,
         )
     except Exception:  # noqa: BLE001 — feedback thất bại không được phá trả lời
         logger.warning("submit_feedback failed key=%s", key, exc_info=True)
