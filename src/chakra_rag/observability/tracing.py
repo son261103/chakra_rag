@@ -20,6 +20,7 @@ from langsmith import get_current_run_tree
 logger = logging.getLogger(__name__)
 
 _client_cache: Any = None  # langsmith.Client | None — lazy singleton
+_warned_unconfigured: bool = False  # warn 1 lần/process nếu TRACING=true mà thiếu API key
 
 
 def _tracing_requested() -> bool:
@@ -28,10 +29,18 @@ def _tracing_requested() -> bool:
 
 def ls_client() -> Any | None:
     """Trả về langsmith.Client hoặc None nếu chưa cấu hình (auth từ env)."""
-    global _client_cache
+    global _client_cache, _warned_unconfigured
     if _client_cache is not None:
         return _client_cache
-    if not (_tracing_requested() and os.environ.get("LANGSMITH_API_KEY")):
+    if _tracing_requested() and not os.environ.get("LANGSMITH_API_KEY"):
+        if not _warned_unconfigured:
+            _warned_unconfigured = True
+            logger.warning(
+                "LANGSMITH_TRACING=true nhưng thiếu LANGSMITH_API_KEY — "
+                "tiếp tục không trace (warn 1 lần)"
+            )
+        return None
+    if not _tracing_requested():
         return None
     try:
         import langsmith as ls
