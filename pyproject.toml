@@ -8,6 +8,7 @@ dependencies = [
     "langchain-openai",
     "langchain-text-splitters",
     "langgraph",
+    "langgraph-prebuilt",
     "sqlite-vec",
     "sentence-transformers",
     "fastapi",
@@ -15,7 +16,14 @@ dependencies = [
     "numpy",
     "python-multipart",
     "pypdf",
+    # Declared explicitly (previously only transitive / in requirements.txt):
+    "openai",        # client SDK used indirectly by langchain-openai; pin visibility
+    "pydantic>=2",   # models used by api layer
+    "langsmith>=0.11.1,<1.0",  # direct SDK usage: Client/@traceable/ls.trace
 ]
+
+[tool.uv]
+# Lockfile consistency: everything resolvable from pyproject alone.
 
 [project.optional-dependencies]
 dev = ["pytest"]
