@@ -49,7 +49,7 @@ Reference docs: https://docs.langchain.com/langsmith (trace-with-langchain, anno
 
 - `src/chakra_rag/observability/telemetry.py` entirely (Telemetry class, log_ask, read_all, timed).
 - Telemetry call blocks at rag_service.py:120-136 (ask) and :208-225 (ask_stream).
-- `payload_json` column writes in `store.add_message` (store.py:392) and reading in list_history_for_llm (store.py:449). Keep column in schema for zero-migration; stop writing (write NULL). Document that new deployments can drop it later.
+- ~~payload_json~~ KEPT — correction after deeper inspection: the React UI replays stored payloads for past turns (App.tsx:46-67 `messagesToHistory` reads `messages[].payload` to restore citations/search_trace), so `payload_json` is product data displayed in-app, not telemetry. `Telemetry` JSONL removal does NOT touch it. `add_message(payload=...)` stays unchanged.
 - DESIGN.md section 228-250 and README:160 rationale describing JSONL choice — replace with LangSmith description.
 
 ### Additions
