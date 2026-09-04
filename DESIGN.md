@@ -207,7 +207,7 @@ GET  /health
 - `POST /ask` trả 503 khi index chưa ready — tránh trả lời với index dở dang (chi tiết nhỏ nhưng thể hiện kiểm soát chất lượng).
 - Toàn bộ tương tác upload, xem tiến trình, cấu hình tích hợp LLM và hỏi đáp đều thông qua API và Web UI.
 
-Chạy: `uvicorn chakra_rag.interfaces.api:app`. Logic nằm hết trong service/ingestion module, API không chứa nghiệp vụ. Thêm **CORS middleware** cho phép origin của dev server Vite (`http://localhost:5173`).
+Chạy: `uvicorn chakra_rag.api:app`. Logic nằm hết trong service/ingestion module, API không chứa nghiệp vụ. Thêm **CORS middleware** cho phép origin của dev server Vite (`http://localhost:5173`).
 
 ### 3.9 UI: Vite + React + TypeScript (phần bonus — làm sau cùng)
 
@@ -289,9 +289,12 @@ chakra_rag/
 │   ├── ingestion/worker.py   # worker nền: parse → chunk → embed, cập nhật tiến trình
 │   ├── observability/tracing.py  # langsmith client factory, trace metadata, submit feedback
 │   ├── observability/timing.py   # timed()/elapsed_ms() đo latency
-│   ├── service/rag_service.py      # composition root: ask(question) -> Answer
-│   └── interfaces/           # các lối vào, không chứa nghiệp vụ
-│       └── api.py            #   FastAPI mỏng + CORS + endpoints files/progress/integrations
+│   ├── service/
+│   │   ├── rag_service.py        # composition root: ask(question) -> Answer
+│   │   └── integration_service.py # quản lý tích hợp LLM & mã hóa KEK/DEK
+│   └── api/                      # FastAPI app + modular routers
+│       ├── app.py                # app factory, lifespan & CORS
+│       └── routes/               # chat, files, conversations, integrations, health
 ├── tests/test_smoke.py       # chunking + store + retrieve + verify chạy không cần LLM
 └── ui/                       # BONUS — Vite + React + TS, tổ chức theo feature
     ├── package.json

@@ -6,7 +6,7 @@ import uvicorn
 
 
 def main() -> None:
-    uvicorn.run("chakra_rag.interfaces.api:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("chakra_rag.api:app", host="0.0.0.0", port=8000, reload=True)
 
 
 if __name__ == "__main__":

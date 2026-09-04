@@ -35,7 +35,7 @@ cp .env.example .env
 
 # 3) Khởi chạy Backend API (Terminal 1)
 uv run python -m chakra_rag
-# hoặc: uv run uvicorn chakra_rag.interfaces.api:app --reload --port 8000
+# hoặc: uv run uvicorn chakra_rag.api:app --reload --port 8000
 
 # 4) Khởi chạy Frontend UI (Terminal 2)
 cd ui && npm install && npm run dev
@@ -151,7 +151,7 @@ src/chakra_rag/
   ingestion/     # worker ingest
   observability/ # langsmith tracing + timing helpers
   service/       # RagService composition root
-  interfaces/    # fastapi api
+  api/           # fastapi app + modular routers (chat, files, conversations, integrations, health)
 tests/test_smoke.py
 ```
 
@@ -163,7 +163,7 @@ Chi tiết thiết kế: xem `DESIGN.md`.
 
 ```bash
 # Terminal 1 — API
-PYTHONPATH=src uvicorn chakra_rag.interfaces.api:app --reload --port 8000
+uv run uvicorn chakra_rag.api:app --reload --port 8000
 
 # Terminal 2 — UI
 cd ui && npm install && npm run dev

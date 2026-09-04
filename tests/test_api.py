@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from chakra_rag.interfaces import api as api_mod
+from chakra_rag import api as api_mod
 
 
 @pytest.fixture()
@@ -19,6 +19,20 @@ def client(tmp_path):
     service.store.list_files.return_value = []
     service.store.list_conversations.return_value = []
     service.store.create_conversation.return_value = {"id": "c1", "title": "Hội thoại mới"}
+    service.conversations.create_conversation.return_value = {"id": "c1", "title": "Hội thoại mới"}
+    service.conversations.list_conversations.return_value = []
+    service.files.list_files.return_value = []
+    service.files.upload_file.return_value = {
+        "file_id": "fid1",
+        "name": "notes.md",
+        "status": "queued",
+    }
+    service.files.get_progress.return_value = {
+        "status": "ready",
+        "percent": 100,
+        "chunks_done": 1,
+        "chunks_total": 1,
+    }
     worker.progress.return_value = {
         "status": "ready",
         "percent": 100,
@@ -73,8 +87,8 @@ def test_upload_accepts_md(client):
     assert r.status_code == 200
     assert r.json()["file_id"] == "fid1"
 
-
 def test_ask_503_when_index_not_ready(client):
+    client.service.files.get_progress.return_value = {"status": "parsing"}
     client.worker.progress.return_value = {"status": "parsing"}
     r = client.post("/ask", json={"question": "hi?"})
     assert r.status_code == 503
@@ -87,16 +101,16 @@ def test_conversations_roundtrip(client):
 
 
 def test_list_integrations(client):
-    client.service.store.list_integrations.return_value = [
+    client.service.integrations.list_integrations.return_value = [
         {
             "id": "i1",
             "name": "Default",
             "provider": "openai",
             "base_url": "https://api.openai.com/v1",
             "model": "gpt-4o-mini",
-            "encrypted_api_key": "",
-            "encrypted_dek": "",
-            "is_active": 1,
+            "masked_api_key": "sk-...",
+            "has_api_key": True,
+            "is_active": True,
             "created_at": "2026-09-04T00:00:00",
             "updated_at": "2026-09-04T00:00:00",
         }
@@ -110,19 +124,19 @@ def test_list_integrations(client):
 
 
 def test_create_and_delete_integration(client):
-    client.service.store.create_integration.return_value = {
+    client.service.integrations.create_integration.return_value = {
         "id": "new-1",
         "name": "New Integration",
         "provider": "openai",
         "base_url": "https://api.test/v1",
         "model": "deepseek-chat",
-        "encrypted_api_key": "",
-        "encrypted_dek": "",
-        "is_active": 1,
+        "masked_api_key": "sk-...",
+        "has_api_key": True,
+        "is_active": True,
         "created_at": "2026-09-04T00:00:00",
         "updated_at": "2026-09-04T00:00:00",
     }
-    client.service.store.delete_integration.return_value = True
+    client.service.integrations.delete_integration.return_value = True
 
     r = client.post(
         "/integrations",
@@ -136,7 +150,6 @@ def test_create_and_delete_integration(client):
     )
     assert r.status_code == 200
     assert r.json()["id"] == "new-1"
-    assert client.service.reload_agent.called
 
     del_res = client.delete("/integrations/new-1")
     assert del_res.status_code == 200
@@ -144,7 +157,7 @@ def test_create_and_delete_integration(client):
 
 
 def test_test_integration_endpoint(client):
-    client.service.test_llm_connection.return_value = {
+    client.service.integrations.test_connection.return_value = {
         "ok": True,
         "model": "gpt-4o-mini",
         "response": "Hello",
