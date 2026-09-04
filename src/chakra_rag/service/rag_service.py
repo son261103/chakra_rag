@@ -37,7 +37,30 @@ class RagService:
             rrf_k=self.cfg.rrf_k,
             min_score=self.cfg.min_score,
         )
-        self.agent = RagAgent(self.cfg, self.retriever)
+        self._ensure_default_integration()
+        self.agent = RagAgent(self.cfg, self.retriever, store=self.store)
+
+    def _ensure_default_integration(self) -> None:
+        """Nếu DB chưa có tích hợp nào, khởi tạo cấu hình mặc định vào database."""
+        try:
+            if self.store.count_integrations() == 0:
+                from chakra_rag.core.security import encrypt_integration_key
+
+                model_name = self.cfg.llm_model or "gpt-4o-mini"
+                base_url = self.cfg.llm_base_url or "https://api.openai.com/v1"
+                enc = encrypt_integration_key(self.cfg.llm_api_key, self.cfg.encryption_key)
+                self.store.create_integration(
+                    name="OpenAI (Mặc định)",
+                    model=model_name,
+                    base_url=base_url,
+                    provider="openai",
+                    encrypted_api_key=enc.encrypted_api_key,
+                    encrypted_dek=enc.encrypted_dek,
+                    is_active=True,
+                )
+                logger.info("Đã khởi tạo tích hợp LLM mặc định vào database.")
+        except Exception:
+            logger.exception("Lỗi khi tạo tích hợp mặc định từ .env (bỏ qua)")
 
     def _history_for_conversation(self, conversation_id: str | None) -> list[dict[str, str]]:
         if not conversation_id:
@@ -226,3 +249,72 @@ class RagService:
 
     def close(self) -> None:
         self.store.close()
+
+    def get_active_integration_info(self) -> dict[str, Any]:
+        """Lấy thông tin cấu hình LLM đang kích hoạt (đã che API key)."""
+        from chakra_rag.core.security import decrypt_integration_key, mask_api_key
+
+        active = self.store.get_active_integration()
+        if not active:
+            return {
+                "id": "env-fallback",
+                "name": "Môi trường (.env)",
+                "provider": "openai",
+                "base_url": self.cfg.llm_base_url,
+                "model": self.cfg.llm_model,
+                "masked_api_key": mask_api_key(self.cfg.llm_api_key),
+                "has_api_key": bool(self.cfg.llm_api_key),
+                "is_active": True,
+            }
+        try:
+            raw_key = decrypt_integration_key(
+                active.get("encrypted_api_key", ""),
+                active.get("encrypted_dek", ""),
+                self.cfg.encryption_key,
+            )
+        except Exception:
+            raw_key = ""
+        return {
+            "id": active["id"],
+            "name": active["name"],
+            "provider": active.get("provider", "openai"),
+            "base_url": active["base_url"],
+            "model": active["model"],
+            "masked_api_key": mask_api_key(raw_key),
+            "has_api_key": bool(raw_key),
+            "is_active": True,
+            "created_at": active.get("created_at"),
+            "updated_at": active.get("updated_at"),
+        }
+
+    def reload_agent(self) -> None:
+        """Xóa cache agent khi cấu hình tích hợp thay đổi để lượt hỏi tiếp theo áp dụng ngay."""
+        self.agent.invalidate_agent()
+
+    def test_llm_connection(
+        self,
+        model: str,
+        base_url: str,
+        api_key: str,
+    ) -> dict[str, Any]:
+        """Kiểm tra kết nối tới provider LLM với thông số truyền vào."""
+        from chakra_rag.core.llm import ThinkingChatOpenAI
+
+        start = timed()
+        llm = ThinkingChatOpenAI(
+            model=model.strip(),
+            base_url=base_url.strip(),
+            api_key=api_key.strip() or "not-needed",
+            temperature=0,
+            timeout=min(self.cfg.llm_timeout, 20.0),
+            max_retries=1,
+            max_tokens=16,
+        )
+        resp = llm.invoke("Hi")
+        ms = elapsed_ms(start)
+        return {
+            "ok": True,
+            "model": model,
+            "response": str(resp.content).strip()[:100],
+            "latency_ms": ms,
+        }

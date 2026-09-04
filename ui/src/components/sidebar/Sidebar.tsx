@@ -1,4 +1,4 @@
-import { FileText, Plus, Sparkles, Trash2 } from "lucide-react";
+import { FileText, Plus, Settings, Sparkles, Trash2 } from "lucide-react";
 import type { ConversationSummary } from "../../api/types";
 import ThemeToggle from "../theme/ThemeToggle";
 
@@ -9,6 +9,7 @@ interface Props {
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
   onOpenFiles: () => void;
+  onOpenSettings: () => void;
 }
 
 /** Sidebar: brand → chat mới → tài liệu → hội thoại → footer. */
@@ -19,6 +20,7 @@ export default function Sidebar({
   onSelectConversation,
   onDeleteConversation,
   onOpenFiles,
+  onOpenSettings,
 }: Props) {
   return (
     <aside className="sidebar">
@@ -39,6 +41,11 @@ export default function Sidebar({
         <button className="files-btn" onClick={onOpenFiles} type="button">
           <FileText size={15} />
           Tài liệu
+        </button>
+
+        <button className="settings-btn" onClick={onOpenSettings} type="button" title="Cài đặt Model & API Key">
+          <Settings size={15} />
+          Cài đặt LLM
         </button>
       </div>
 

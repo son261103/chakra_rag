@@ -84,3 +84,80 @@ def test_conversations_roundtrip(client):
     r = client.post("/conversations", json={"title": "abc"})
     assert r.status_code == 200
     assert r.json()["id"] == "c1"
+
+
+def test_list_integrations(client):
+    client.service.store.list_integrations.return_value = [
+        {
+            "id": "i1",
+            "name": "Default",
+            "provider": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "model": "gpt-4o-mini",
+            "encrypted_api_key": "",
+            "encrypted_dek": "",
+            "is_active": 1,
+            "created_at": "2026-09-04T00:00:00",
+            "updated_at": "2026-09-04T00:00:00",
+        }
+    ]
+    r = client.get("/integrations")
+    assert r.status_code == 200
+    items = r.json()["integrations"]
+    assert len(items) == 1
+    assert items[0]["id"] == "i1"
+    assert items[0]["is_active"] is True
+
+
+def test_create_and_delete_integration(client):
+    client.service.store.create_integration.return_value = {
+        "id": "new-1",
+        "name": "New Integration",
+        "provider": "openai",
+        "base_url": "https://api.test/v1",
+        "model": "deepseek-chat",
+        "encrypted_api_key": "",
+        "encrypted_dek": "",
+        "is_active": 1,
+        "created_at": "2026-09-04T00:00:00",
+        "updated_at": "2026-09-04T00:00:00",
+    }
+    client.service.store.delete_integration.return_value = True
+
+    r = client.post(
+        "/integrations",
+        json={
+            "name": "New Integration",
+            "base_url": "https://api.test/v1",
+            "model": "deepseek-chat",
+            "api_key": "sk-123",
+            "is_active": True,
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["id"] == "new-1"
+    assert client.service.reload_agent.called
+
+    del_res = client.delete("/integrations/new-1")
+    assert del_res.status_code == 200
+    assert del_res.json() == {"ok": True}
+
+
+def test_test_integration_endpoint(client):
+    client.service.test_llm_connection.return_value = {
+        "ok": True,
+        "model": "gpt-4o-mini",
+        "response": "Hello",
+        "latency_ms": 120,
+    }
+    r = client.post(
+        "/integrations/test",
+        json={
+            "model": "gpt-4o-mini",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-test",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    assert r.json()["latency_ms"] == 120

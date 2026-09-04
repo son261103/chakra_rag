@@ -31,17 +31,17 @@ def _tracing_requested() -> bool:
 def ls_client() -> Any | None:
     """Trả về langsmith.Client hoặc None nếu chưa cấu hình (auth từ env)."""
     global _client_cache, _warned_unconfigured
+    if not _tracing_requested():
+        return None
     if _client_cache is not None:
         return _client_cache
-    if _tracing_requested() and not os.environ.get("LANGSMITH_API_KEY"):
+    if not os.environ.get("LANGSMITH_API_KEY"):
         if not _warned_unconfigured:
             _warned_unconfigured = True
             logger.warning(
                 "LANGSMITH_TRACING=true nhưng thiếu LANGSMITH_API_KEY — "
                 "tiếp tục không trace (warn 1 lần)"
             )
-        return None
-    if not _tracing_requested():
         return None
     try:
         import langsmith as ls

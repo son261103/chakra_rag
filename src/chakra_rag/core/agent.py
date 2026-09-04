@@ -28,6 +28,7 @@ from langsmith import get_current_run_tree, traceable
 from chakra_rag.config import Config
 from chakra_rag.core.llm import ThinkingChatOpenAI
 from chakra_rag.core.retrieval import RetrievalResult, Retriever
+from chakra_rag.core.security import decrypt_integration_key
 
 logger = logging.getLogger(__name__)
 
@@ -141,16 +142,38 @@ def _extract_reasoning(messages: list[BaseMessage]) -> str:
 class RagAgent:
     """Agent RAG với 1 tool search_docs, vòng lặp hữu hạn."""
 
-    def __init__(self, cfg: Config, retriever: Retriever):
+    def __init__(self, cfg: Config, retriever: Retriever, store: Any = None):
         self.cfg = cfg
         self.retriever = retriever
+        self.store = store
         self._agent = None
+        self._current_integration_fingerprint: tuple[str, str, str] | None = None
+
+    def resolve_active_llm_config(self) -> tuple[str, str, str]:
+        """Lấy (model, base_url, api_key) từ active integration trong DB (hoặc fallback Config)."""
+        if self.store is not None:
+            active = self.store.get_active_integration()
+            if active:
+                try:
+                    decrypted_key = decrypt_integration_key(
+                        active.get("encrypted_api_key", ""),
+                        active.get("encrypted_dek", ""),
+                        self.cfg.encryption_key,
+                    )
+                except Exception as exc:
+                    logger.warning("Không thể giải mã API key của active integration: %s", exc)
+                    decrypted_key = ""
+                model = str(active.get("model") or self.cfg.llm_model).strip()
+                base_url = str(active.get("base_url") or self.cfg.llm_base_url).strip()
+                return model, base_url, decrypted_key
+        return self.cfg.llm_model, self.cfg.llm_base_url, self.cfg.llm_api_key
 
     def _make_llm(self) -> ThinkingChatOpenAI:
+        model, base_url, api_key = self.resolve_active_llm_config()
         return ThinkingChatOpenAI(
-            model=self.cfg.llm_model,
-            base_url=self.cfg.llm_base_url,
-            api_key=self.cfg.llm_api_key or "not-needed",
+            model=model,
+            base_url=base_url,
+            api_key=api_key or "not-needed",
             temperature=0,
             timeout=self.cfg.llm_timeout,
             # 502/5xx/connect fail (tokenrouter gateway) — SDK backoff + retry.
@@ -160,10 +183,17 @@ class RagAgent:
             max_tokens=4096,
         )
 
+    def invalidate_agent(self) -> None:
+        """Xóa cache agent để khởi tạo lại với cấu hình LLM mới."""
+        self._agent = None
+        self._current_integration_fingerprint = None
+
     # ---------- agent mode ----------
 
     def _get_agent(self):
-        if self._agent is None:
+        model, base_url, api_key = self.resolve_active_llm_config()
+        fingerprint = (model, base_url, api_key)
+        if self._agent is None or self._current_integration_fingerprint != fingerprint:
             retriever = self.retriever
 
             @tool
@@ -175,8 +205,8 @@ class RagAgent:
 
             llm = self._make_llm()
             self._agent = create_react_agent(llm, [search_docs], prompt=SYSTEM_PROMPT)
+            self._current_integration_fingerprint = fingerprint
         return self._agent
-
     def _history_messages(
         self, history: list[dict[str, str]] | None
     ) -> list[tuple[str, str]]:

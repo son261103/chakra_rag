@@ -20,6 +20,7 @@ dependencies = [
     "openai",        # client SDK used indirectly by langchain-openai; pin visibility
     "pydantic>=2",   # models used by api layer
     "langsmith>=0.11.1,<1.0",  # direct SDK usage: Client/@traceable/ls.trace
+    "cryptography>=50.0.1",
 ]
 
 [tool.uv]

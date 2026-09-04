@@ -16,6 +16,7 @@ import Composer from "../components/chat/Composer";
 import SourceDrawer from "../components/sources/SourceDrawer";
 import DocumentDrawer from "../components/sources/DocumentDrawer";
 import FileDrawer from "../components/files/FileDrawer";
+import SettingsDrawer from "../components/settings/SettingsDrawer";
 
 export interface QAEntry {
   question: string;
@@ -84,6 +85,7 @@ export default function App() {
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
   const [inspectFile, setInspectFile] = useState<FileEntry | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
+  const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   // Thời điểm bắt đầu suy luận — để tính "Đã suy luận trong Xs".
@@ -353,6 +355,7 @@ export default function App() {
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={handleDeleteConversation}
         onOpenFiles={() => setFileDrawerOpen(true)}
+        onOpenSettings={() => setSettingsDrawerOpen(true)}
       />
 
       <main className="chat-area">
@@ -425,6 +428,10 @@ export default function App() {
           setSelectedChunkId(null);
           setInspectFile(f);
         }}
+      />
+      <SettingsDrawer
+        open={settingsDrawerOpen}
+        onClose={() => setSettingsDrawerOpen(false)}
       />
     </div>
   );

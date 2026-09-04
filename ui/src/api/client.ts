@@ -5,18 +5,32 @@ import type {
   ChunkDetail,
   ConversationDetail,
   ConversationSummary,
+  CreateIntegrationPayload,
   FileChunksResponse,
   FileEntry,
   IngestProgress,
+  IntegrationEntry,
   StreamEvent,
+  TestIntegrationPayload,
+  TestIntegrationResult,
+  UpdateIntegrationPayload,
 } from "./types";
 
 const BASE = "/api";
 
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`API ${res.status}: ${detail}`);
+    const raw = await res.text().catch(() => "");
+    let msg = raw;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.detail) {
+        msg = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+      }
+    } catch {
+      // giữ nguyên raw
+    }
+    throw new Error(msg || `API lỗi (${res.status})`);
   }
   return res.json() as Promise<T>;
 }
@@ -203,5 +217,64 @@ export async function getChunk(chunkId: string): Promise<ChunkDetail> {
 export async function getFileChunks(fileId: string): Promise<FileChunksResponse> {
   return handle<FileChunksResponse>(
     await fetch(`${BASE}/files/${encodeURIComponent(fileId)}/chunks`)
+  );
+}
+
+/** Quản lý tích hợp LLM */
+export async function listIntegrations(): Promise<IntegrationEntry[]> {
+  const data = await handle<{ integrations: IntegrationEntry[] }>(await fetch(`${BASE}/integrations`));
+  return data.integrations;
+}
+
+export async function getActiveIntegration(): Promise<IntegrationEntry> {
+  return handle<IntegrationEntry>(await fetch(`${BASE}/integrations/active`));
+}
+
+export async function createIntegration(payload: CreateIntegrationPayload): Promise<IntegrationEntry> {
+  return handle<IntegrationEntry>(
+    await fetch(`${BASE}/integrations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+  );
+}
+
+export async function updateIntegration(
+  id: string,
+  payload: UpdateIntegrationPayload
+): Promise<IntegrationEntry> {
+  return handle<IntegrationEntry>(
+    await fetch(`${BASE}/integrations/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+  );
+}
+
+export async function deleteIntegration(id: string): Promise<void> {
+  await handle<{ ok: boolean }>(
+    await fetch(`${BASE}/integrations/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    })
+  );
+}
+
+export async function activateIntegration(id: string): Promise<IntegrationEntry> {
+  return handle<IntegrationEntry>(
+    await fetch(`${BASE}/integrations/${encodeURIComponent(id)}/activate`, {
+      method: "POST",
+    })
+  );
+}
+
+export async function testIntegration(payload: TestIntegrationPayload): Promise<TestIntegrationResult> {
+  return handle<TestIntegrationResult>(
+    await fetch(`${BASE}/integrations/test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
   );
 }

@@ -97,3 +97,49 @@ export type StreamEvent =
   | { type: "answer_clear" }
   | { type: "done" } & AskResponse
   | { type: "error"; message: string };
+
+/** Cấu hình tích hợp LLM (model, provider, base_url, masked key). */
+export interface IntegrationEntry {
+  id: string;
+  name: string;
+  provider: string;
+  base_url: string;
+  model: string;
+  masked_api_key: string;
+  has_api_key: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateIntegrationPayload {
+  name: string;
+  provider?: string;
+  base_url: string;
+  model: string;
+  api_key: string;
+  is_active?: boolean;
+}
+
+export interface UpdateIntegrationPayload {
+  name?: string;
+  provider?: string;
+  base_url?: string;
+  model?: string;
+  api_key?: string;
+  is_active?: boolean;
+}
+
+export interface TestIntegrationPayload {
+  model: string;
+  base_url: string;
+  api_key?: string;
+  integration_id?: string;
+}
+
+export interface TestIntegrationResult {
+  ok: boolean;
+  model: string;
+  response: string;
+  latency_ms: number;
+}

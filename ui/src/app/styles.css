@@ -296,6 +296,17 @@
   @apply text-sm;
 }
 
+/* ================= Settings button (sidebar) ================= */
+
+.settings-btn {
+  @apply inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-border bg-bg-elevated px-3 py-2 text-[13px] font-semibold leading-tight tracking-[-0.01em] text-text transition;
+}
+
+.settings-btn:hover {
+  @apply border-accent/40 text-accent;
+  filter: brightness(0.985);
+}
+
 /* ================= File drawer ================= */
 
 .file-drawer {
@@ -314,6 +325,12 @@
   @apply max-h-none flex-1 overflow-y-auto;
 }
 
+
+/* ================= Settings drawer ================= */
+
+.settings-drawer {
+  @apply w-[min(560px,94vw)];
+}
 /* ================= Chat area ================= */
 
 .chat-area {

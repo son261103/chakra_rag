@@ -49,6 +49,9 @@ class Config:
     llm_max_retries: int = 5
     llm_timeout: float = 90.0
 
+    # Mã hóa API key (Envelope encryption KEK)
+    encryption_key: str = "chakra-default-secret-encryption-key-2026"
+
     # Embedding (local)
     embed_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
@@ -121,6 +124,7 @@ def get_config() -> Config:
         },
         embed_batch_size=_env_int("EMBED_BATCH_SIZE", 16),
         support_threshold=_env_float("SUPPORT_THRESHOLD", 0.30),
+        encryption_key=_env("ENCRYPTION_KEY", "chakra-default-secret-encryption-key-2026"),
     )
     cfg.ensure_dirs()
     return cfg
