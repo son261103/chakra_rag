@@ -1,6 +1,6 @@
 """Tầng ghép nối (composition root): khởi tạo các thành phần và orchestrate luồng ask.
 
-Cả API lẫn CLI đều đi qua `RagService` — không nơi nào tự ghép pipeline,
+API đi qua `RagService` — không nơi nào tự ghép pipeline,
 để logic chỉ tồn tại một chỗ.
 """
 

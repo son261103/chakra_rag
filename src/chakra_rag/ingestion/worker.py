@@ -360,18 +360,3 @@ class IngestWorker:
             ms,
         )
 
-
-def ingest_directory_sync(
-    cfg: Config, store: Store, embedder: Embedder, directory: Path, source: str = "seed"
-) -> int:
-    """Ingest đồng bộ một thư mục (dùng cho CLI / seed corpus). Trả về số file."""
-    worker = IngestWorker(cfg, store, embedder)
-    paths = sorted(p for p in directory.iterdir() if p.suffix.lower() in cfg.supported_suffixes)
-    for path in paths:
-        fid = worker.enqueue(path, source=source)
-        try:
-            worker._process_file(path)  # noqa: SLF001 — chạy đồng bộ, không qua thread
-        except Exception as exc:  # noqa: BLE001 — file lỗi không chặn các file sau
-            logger.exception("sync ingest failed name=%s", path.name)
-            store.set_file_status(fid, "failed", error=f"{type(exc).__name__}: {exc}")
-    return len(paths)

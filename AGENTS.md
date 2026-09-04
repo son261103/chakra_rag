@@ -25,20 +25,13 @@ Lint (CI-equivalent gate, run before finishing):
 uv run ruff check src tests scripts          # line-length 100, rules: E F I B UP
 ```
 
-CLI (needs `.env` LLM config; `--mode stuff` for models without function calling):
-
-```bash
-uv run python -m chakra_rag ingest           # seed index from data/docs/
-uv run python -m chakra_rag ask "..."        # or: files
-```
-
 API + UI (two terminals):
 
 ```bash
-uv run uvicorn chakra_rag.interfaces.api:app --reload --port 8000
+uv run python -m chakra_rag                  # starts FastAPI backend on :8000
+# or: uv run uvicorn chakra_rag.interfaces.api:app --reload --port 8000
 cd ui && npm install && npm run dev          # :5173
 ```
-
 UI typecheck = `npm run build` (`tsc -b && vite build`); no eslint is configured.
 
 LangSmith eval export: `uv run python scripts/export_eval_dataset.py --project chakra_rag --dataset rag-prod-eval [--limit 200]`
@@ -51,16 +44,16 @@ LangSmith eval export: `uv run python scripts/export_eval_dataset.py --project c
 
 ## Behavioral gotchas
 
-- The API **never auto-seeds** `data/docs` — the index contains only user-uploaded files or whatever a prior CLI `ingest` added.
+- The API **never auto-seeds** `data/docs` — the index contains only user-uploaded files or existing database records.
 - Agent mode requires a function-calling model; otherwise use `--mode stuff`.
 - The citation verifier flags `invalid_citations` / `unsupported_claims` rather than silently dropping them, and its support check is a cheap n-gram proxy (not NLI) — paraphrased claims can be flagged. `MIN_SCORE=0.25` is tuned to MiniLM's compressed cosine scale (~0.3 ≈ noise).
 - Vite dev proxy strips the `/api` prefix when forwarding to :8000 — backend routes have no `/api`; CORS allowlist covers localhost:5173 only.
 
 ## Structure
 
-- `src/chakra_rag/` (src-layout, hatchling): `core/` (chunking, embedding, retrieval+RRF, llm, agent, verification — the hand-written capability code), `storage/` (SQLite: files + chunks + vec0 + FTS5), `ingestion/`, `observability/` (LangSmith), `service/` (`RagService` composition root), `interfaces/` (CLI `__main__.py` + FastAPI `api.py`).
+- `src/chakra_rag/` (src-layout, hatchling): `core/` (chunking, embedding, retrieval+RRF, llm, agent, verification — the hand-written capability code), `storage/` (SQLite: files + chunks + vec0 + FTS5 + llm_integrations), `ingestion/`, `observability/` (LangSmith), `service/` (`RagService` composition root), `interfaces/` (FastAPI `api.py` + `__main__.py`).
 - `scripts/` is a package (`__init__.py`) — pytest `pythonpath=["."]` in `pyproject.toml` lets tests import it.
-- `data/`: `docs/` = CLI seed corpus, `uploads/` = UI uploads, `chakra.db` = runtime artifact (gitignored — don't commit DBs, uploads, or logs).
+- `data/`: `docs/` = seed corpus, `uploads/` = UI uploads, `chakra.db` = runtime artifact (gitignored — don't commit DBs, uploads, or logs).
 
 ## Conventions
 

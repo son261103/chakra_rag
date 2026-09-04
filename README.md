@@ -9,7 +9,7 @@
 | Truy xuất | Hybrid: vector (`sqlite-vec`) + lexical (FTS5) → Reciprocal Rank Fusion |
 | Trả lời + trích dẫn | Agent gọi tool `search_docs` (LangGraph) hoặc mode `stuff`; mỗi claim kèm `[chunk_id]` |
 | Hạn chế hallucination | Retrieval gate + prompt ràng buộc + citation verifier độc lập LLM |
-| Mã chạy được + hướng dẫn | README này + CLI `ingest` / `ask` / `files` |
+| Mã chạy được + hướng dẫn | README này + API / Web UI kèm tài liệu chi tiết |
 
 ---
 
@@ -23,53 +23,33 @@
 
 ---
 
-## 3. Cài đặt & chạy nhanh (CLI — đường demo chính)
+## 3. Cài đặt & chạy nhanh (API + Web UI)
 
 ```bash
-# Clone / vào thư mục project
-cd chakra_rag
+# 1) Cài đặt môi trường
+uv sync --extra dev
 
-# 1) Tạo môi trường + cài dependency
-uv venv --python 3.12 .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-uv pip install -r requirements.txt
-# hoặc: python -m venv .venv && pip install -r requirements.txt
-
-# 2) Cấu hình LLM
+# 2) Cấu hình .env
 cp .env.example .env
-# Sửa .env: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
+# File .env lưu khóa chủ ENCRYPTION_KEY để mã hóa DEK của từng tích hợp
 
-# 3) Ingest corpus mẫu (4 policy trong data/docs/)
-PYTHONPATH=src python -m chakra_rag ingest
+# 3) Khởi chạy Backend API (Terminal 1)
+uv run python -m chakra_rag
+# hoặc: uv run uvicorn chakra_rag.interfaces.api:app --reload --port 8000
 
-# 4) Hỏi thử (có trích dẫn nguồn)
-PYTHONPATH=src python -m chakra_rag ask "Mức hoàn phí đào tạo tối đa là bao nhiêu?"
-PYTHONPATH=src python -m chakra_rag ask "Một PR cần bao nhiêu approval trước khi merge?"
-PYTHONPATH=src python -m chakra_rag ask "Công ty có hỗ trợ mua laptop cá nhân không?"   # unanswerable
-
-# Mode không cần tool-calling (fallback / ablation)
-PYTHONPATH=src python -m chakra_rag ask "..." --mode stuff
-
-# Xem file đã index
-PYTHONPATH=src python -m chakra_rag files
+# 4) Khởi chạy Frontend UI (Terminal 2)
+cd ui && npm install && npm run dev
+# Truy cập: http://localhost:5173
 ```
 
+> **Cấu hình Model & API Key:**
+> Model và API Key được cấu hình trực tiếp trên Web UI thông qua nút **Cài đặt LLM** ở Sidebar.
+> API Key được mã hóa an toàn bằng cơ chế **Envelope Encryption (KEK / DEK)** trước khi lưu vào SQLite, không cần lưu thô trong `.env`.
+
 ### Cấu hình `.env` (rút gọn)
-
 ```env
-# OpenAI
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_API_KEY=sk-...
-LLM_MODEL=gpt-4o-mini
-
-# OpenRouter
-# LLM_BASE_URL=https://openrouter.ai/api/v1
-# LLM_MODEL=<model-id>
-
-# Ollama local
-# LLM_BASE_URL=http://localhost:11434/v1
-# LLM_API_KEY=ollama
-# LLM_MODEL=qwen2.5:7b
+# Khóa chủ KEK để mã hóa DEK của từng tích hợp (Model & API Key cấu hình trên UI)
+ENCRYPTION_KEY=zkniEH7RPIWhK3rtbR96-iqV30JHsnBZ_qnP2xofJcU=
 
 EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 DB_PATH=data/chakra.db
@@ -171,7 +151,7 @@ src/chakra_rag/
   ingestion/     # worker ingest
   observability/ # langsmith tracing + timing helpers
   service/       # RagService composition root
-  interfaces/    # cli + fastapi
+  interfaces/    # fastapi api
 tests/test_smoke.py
 ```
 
@@ -192,7 +172,7 @@ cd ui && npm install && npm run dev
 
 - Upload `.md` / `.txt` từ sidebar → worker nền chunk + embed → chấm xanh khi ready  
 - Chat streaming (SSE): thinking / tool calls / answer + citation chip mở đoạn gốc  
-- **Không auto-seed** `data/docs` khi mở API: index chỉ gồm file user upload (hoặc đã `ingest` CLI trước đó)  
+- **Không auto-seed** `data/docs` khi mở API: index gồm file user upload qua Web UI
 - Đổi `.env` cần **restart** backend (`--reload` chỉ theo dõi file `.py`)
 
 ---
@@ -203,7 +183,7 @@ cd ui && npm install && npm run dev
 - LLM qua endpoint OpenAI-compatible; người chấm cần 1 key hoặc Ollama.
 - Đầu vào chính cho take-home: `.md` / `.txt` sạch (không OCR PDF scan / bảng phức tạp trong phạm vi 48h).
 - Mode `agent` cần model function-calling; không thì `--mode stuff`.
-- `data/docs` phục vụ **CLI demo**. UI live index = những gì đã có trong DB sau upload/`ingest` của người dùng.
+- `data/docs` là corpus mẫu tham khảo. UI live index = những gì đã có trong DB sau upload của người dùng.
 - Embedding chạy local CPU; lần đầu tải model chậm hơn.
 
 ---
@@ -229,7 +209,7 @@ chakra_rag/
 ├── src/chakra_rag/           # backend
 ├── tests/test_smoke.py
 ├── data/
-│   ├── docs/                 # corpus seed (CLI demo)
+│   ├── docs/                 # corpus tài liệu mẫu tham khảo
 │   ├── uploads/              # file upload UI (tham chiếu)
 │   └── cau_hoi_mau.txt       # gợi ý câu hỏi demo UI (không ingest)
 └── ui/                       # frontend tuỳ chọn

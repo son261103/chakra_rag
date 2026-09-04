@@ -8,7 +8,7 @@
 |---|---|
 | Chất lượng truy xuất & mức liên quan | Không chỉ vector search: thêm lexical (FTS5) + fusion, threshold gate đánh dấu `low_confidence` |
 | Grounding & trích dẫn đáng tin | Citation không phải chỉ là dòng nhắc trong prompt — phải có **bước kiểm tra trích dẫn sau khi sinh** (citation verification) |
-| Mã sạch, thực dụng | Một package nhỏ, CLI + FastAPI mỏng, ít phụ thuộc, chạy được ngay |
+| Mã sạch, thực dụng | Một package nhỏ, FastAPI mỏng, ít phụ thuộc, chạy được ngay |
 
 Đề nói KHÔNG cần UI, cloud, dữ liệu lớn → thời gian ưu tiên tuyệt đối cho **retrieval quality + grounding** trước; UI (Vite + React + TS) làm **sau cùng như phần bonus** để demo trực quan — không để nó ăn vào ngân sách của phần lõi.
 
@@ -53,7 +53,7 @@ data/docs/*.md (corpus nhỏ, tiếng Việt, tự soạn)
                             unsupported_claims[] }
 ```
 
-Hai đường vào: **CLI** (`python -m chakra_rag ask "..."`) để chấm nhanh, **FastAPI** (`POST /ask`) theo lựa chọn công nghệ. API chỉ là lớp mỏng bọc pipeline. Trên cùng là **UI Vite + React + TS** (phần bonus, làm sau cùng) gọi API để demo trực quan: khung hỏi đáp, hiển thị câu trả lời kèm citation **bấm được** để mở đúng đoạn tài liệu gốc.
+Lối vào: **FastAPI** (`POST /ask`) theo chuẩn RESTful API. Phía trên là **UI Vite + React + TS** gọi API để demo trực quan: khung hỏi đáp, hiển thị câu trả lời kèm citation **bấm được** để mở đúng đoạn tài liệu gốc, và bảng Cài đặt tích hợp LLM mã hóa KEK/DEK.
 
 ```
 ┌────────────────────────────────────────────────────────────┐
@@ -205,7 +205,7 @@ GET  /health
 - Ingest chạy trong **worker nền 1 thread** (queue + thread) — cố tình 1 thread để tránh ghi SQLite đồng thời và để tiến trình deterministc. Sau mỗi batch embedding cập nhật `chunks_done` → UI đọc ra %.
 - Status tổng = `ready` khi mọi file đã ready → UI bật chấm xanh, cho phép chat.
 - `POST /ask` trả 503 khi index chưa ready — tránh trả lời với index dở dang (chi tiết nhỏ nhưng thể hiện kiểm soát chất lượng).
-- Ingest qua CLI vẫn chạy được (`python -m chakra_rag ingest`) để test nhanh không cần UI.
+- Toàn bộ tương tác upload, xem tiến trình, cấu hình tích hợp LLM và hỏi đáp đều thông qua API và Web UI.
 
 Chạy: `uvicorn chakra_rag.interfaces.api:app`. Logic nằm hết trong service/ingestion module, API không chứa nghiệp vụ. Thêm **CORS middleware** cho phép origin của dev server Vite (`http://localhost:5173`).
 
@@ -222,7 +222,7 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
   - Cột phải: panel "Nguồn trích dẫn" — click chip nào thì hiển thị chunk gốc tương ứng (doc, section, span text), highlight phần liên quan. Đây chính là tính năng "ăn điểm": người xem kiểm chứng được trích dẫn trỏ về đúng đoạn tài liệu.
   - Badge cảnh báo khi `low_confidence=true` hoặc `unsupported_claims` khác rỗng (ví dụ: "Câu trả lời có phần chưa được nguồn đỡ").
 - **Gọi API**: `fetch` thuần (không cần axios) tới `POST /files`, `GET /ingest/progress`, `POST /ask`, `GET /chunks/{id}`; dev proxy trong `vite.config.ts` trỏ `/api` → `localhost:8000` để khỏi lo CORS khi dev. Polling đơn giản bằng `setInterval` — không cần WebSocket cho quy mô này.
-- **Không làm**: auth, state management phức tạp, routing, deploy. Nếu thời gian quá hẹp, bỏ hẳn UI — CLI + API vẫn đáp ứng đủ đề bài.
+- **Không làm**: auth phức tạp, routing nhiều trang, deploy cloud. Tập trung tối đa vào trải nghiệm Web UI + API phục vụ bài toán RAG.
 
 ### 3.10 Chọn framework: dùng LangChain + LangGraph; observability qua LangSmith (tùy chọn)
 
@@ -291,8 +291,7 @@ chakra_rag/
 │   ├── observability/timing.py   # timed()/elapsed_ms() đo latency
 │   ├── service/rag_service.py      # composition root: ask(question) -> Answer
 │   └── interfaces/           # các lối vào, không chứa nghiệp vụ
-│       ├── api.py            #   FastAPI mỏng + CORS + endpoints files/progress
-│       └── cli.py            #   ingest / ask / files
+│       └── api.py            #   FastAPI mỏng + CORS + endpoints files/progress/integrations
 ├── tests/test_smoke.py       # chunking + store + retrieve + verify chạy không cần LLM
 └── ui/                       # BONUS — Vite + React + TS, tổ chức theo feature
     ├── package.json
@@ -318,7 +317,7 @@ Nguyên tắc: **phần lõi xong trước, UI làm sau cùng**. Nếu chậm ti
 | Bước | Nội dung | ~Thời gian |
 |---|---|---|
 | 1 | Corpus demo + scaffold project + requirements | 2h |
-| 2 | chunking + embed + store (sqlite-vec, FTS5) + ingest CLI | 4h |
+| 2 | chunking + embed + store (sqlite-vec, FTS5) + ingest worker | 4h |
 | 3 | retrieve hybrid + RRF + threshold | 3h |
 | 4 | agent loop (tool calling) + citation verification | 5h |
 | 5 | FastAPI + CORS + ingest worker nền có tiến trình + smoke tests | 3h |
