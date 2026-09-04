@@ -25,10 +25,10 @@ from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 from langsmith import get_current_run_tree, traceable
 
-from chakra_rag.config import Config
-from chakra_rag.core.llm import ThinkingChatOpenAI
-from chakra_rag.core.retrieval import RetrievalResult, Retriever
-from chakra_rag.core.security import decrypt_integration_key
+from config import Config
+from core.llm import ThinkingChatOpenAI
+from core.retrieval import RetrievalResult, Retriever
+from core.security import decrypt_integration_key
 
 logger = logging.getLogger(__name__)
 

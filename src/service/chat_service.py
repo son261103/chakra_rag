@@ -6,14 +6,14 @@ import logging
 from collections.abc import Iterator
 from typing import Any
 
-from chakra_rag.config import Config, get_config
-from chakra_rag.core.agent import AgentResult, RagAgent
-from chakra_rag.core.retrieval import Retriever
-from chakra_rag.core.verification import VerifiedAnswer, verify_answer
-from chakra_rag.observability.timing import elapsed_ms, timed
-from chakra_rag.observability.tracing import trace_metadata
-from chakra_rag.service.conversation_service import ConversationService
-from chakra_rag.storage.store import Store
+from config import Config, get_config
+from core.agent import AgentResult, RagAgent
+from core.retrieval import Retriever
+from core.verification import VerifiedAnswer, verify_answer
+from observability.timing import elapsed_ms, timed
+from observability.tracing import trace_metadata
+from service.conversation_service import ConversationService
+from storage.store import Store
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ class ChatService:
 
     def _submit_quality_feedback(self, verified: VerifiedAnswer) -> None:
         """Ghi 3 feedback scores lên root run LangSmith (no-op khi chưa cấu hình)."""
-        import chakra_rag.service.container as rs
+        import service.container as rs
 
         rs.submit_feedback(
             "invalid_citations",

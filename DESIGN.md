@@ -207,7 +207,7 @@ GET  /health
 - `POST /ask` trả 503 khi index chưa ready — tránh trả lời với index dở dang (chi tiết nhỏ nhưng thể hiện kiểm soát chất lượng).
 - Toàn bộ tương tác upload, xem tiến trình, cấu hình tích hợp LLM và hỏi đáp đều thông qua API và Web UI.
 
-Chạy: `uvicorn chakra_rag.api:app`. Logic nằm hết trong service/ingestion module, API không chứa nghiệp vụ. Thêm **CORS middleware** cho phép origin của dev server Vite (`http://localhost:5173`).
+Chạy: `uvicorn api:app`. Logic nằm hết trong service/ingestion module, API không chứa nghiệp vụ. Thêm **CORS middleware** cho phép origin của dev server Vite (`http://localhost:5173`).
 
 ### 3.9 UI: Vite + React + TypeScript (phần bonus — làm sau cùng)
 
@@ -277,24 +277,21 @@ chakra_rag/
 ├── data/docs/*.md            # corpus seed (được đăng ký vào bảng files như file thường)
 ├── data/uploads/             # file người dùng upload qua UI
 ├── logs/                    # logs ứng dụng
-├── src/chakra_rag/           # tổ chức theo tầng, dependency một chiều từ ngoài vào trong
-│   ├── config.py             # đọc env, dataclass Config
-│   ├── core/                 # nghiệp vụ lõi, không phụ thuộc framework
-│   │   ├── chunking.py       #   dùng langchain_text_splitters
-│   │   ├── embedding.py      #   sentence-transformers, chuẩn hóa L2
-│   │   ├── retrieval.py      #   vector, fts, RRF, threshold (tự viết — phần chấm điểm)
-│   │   ├── agent.py          #   LangGraph create_react_agent + fallback stuff
-│   │   └── verification.py   #   citation verification (tự viết — phần chấm điểm)
-│   ├── storage/store.py      # sqlite + vec0 + FTS5 + bảng files
-│   ├── ingestion/worker.py   # worker nền: parse → chunk → embed, cập nhật tiến trình
-│   ├── observability/tracing.py  # langsmith client factory, trace metadata, submit feedback
-│   ├── observability/timing.py   # timed()/elapsed_ms() đo latency
-│   ├── service/
-│   │   ├── rag_service.py        # composition root: ask(question) -> Answer
+├── src/                         # kiến trúc phân tầng, đặt trực tiếp dưới src/
+│   ├── config.py                # cấu hình tập trung Config
+│   ├── core/                    # nghiệp vụ lõi: chunking, embedding, retrieval, agent, verify, security
+│   ├── storage/store.py         # SQLite (chunks + vec0 + FTS5 + files + conversations + llm_integrations)
+│   ├── ingestion/worker.py      # worker nền: parse → chunk → embed, cập nhật tiến trình
+│   ├── service/                 # domain services (chat, conversation, file, integration) + container
+│   │   ├── container.py         #   ServiceContainer: composition root & dependency container
+│   │   ├── chat_service.py      #   RAG agent loop, retrieval, verification, streaming
+│   │   ├── conversation_service.py # lịch sử, tin nhắn, auto-titling
+│   │   ├── file_service.py      #   upload, listing, chunk inspector, reingest
 │   │   └── integration_service.py # quản lý tích hợp LLM & mã hóa KEK/DEK
-│   └── api/                      # FastAPI app + modular routers
-│       ├── app.py                # app factory, lifespan & CORS
-│       └── routes/               # chat, files, conversations, integrations, health
+│   ├── api/                     # FastAPI app + modular routers
+│   │   ├── app.py               #   app factory, lifespan & CORS
+│   │   └── routes/              #   chat, files, conversations, integrations, health
+│   └── observability/           # LangSmith tracing + timing helpers
 ├── tests/test_smoke.py       # chunking + store + retrieve + verify chạy không cần LLM
 └── ui/                       # BONUS — Vite + React + TS, tổ chức theo feature
     ├── package.json

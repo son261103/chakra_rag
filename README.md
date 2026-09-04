@@ -34,8 +34,7 @@ cp .env.example .env
 # File .env lưu khóa chủ ENCRYPTION_KEY để mã hóa DEK của từng tích hợp
 
 # 3) Khởi chạy Backend API (Terminal 1)
-uv run python -m chakra_rag
-# hoặc: uv run uvicorn chakra_rag.api:app --reload --port 8000
+uv run uvicorn api:app --reload --port 8000
 
 # 4) Khởi chạy Frontend UI (Terminal 2)
 cd ui && npm install && npm run dev
@@ -144,15 +143,15 @@ câu hỏi
 Cấu trúc code (layered backend):
 
 ```
-src/chakra_rag/
-  config.py
-  core/          # chunking, embedding, retrieval, llm, agent, verification
-  storage/       # SQLite store
-  ingestion/     # worker ingest
-  observability/ # langsmith tracing + timing helpers
-  service/       # RagService composition root
+src/
   api/           # fastapi app + modular routers (chat, files, conversations, integrations, health)
-tests/test_smoke.py
+  core/          # chunking, embedding, retrieval, llm, agent, verification, security (KEK/DEK)
+  storage/       # SQLite store (chunks, vec0, fts5, files, conversations, llm_integrations)
+  ingestion/     # worker ingest
+  service/       # domain services (chat, conversation, file, integration) + container
+  observability/ # langsmith tracing + timing helpers
+  config.py      # cấu hình tập trung
+tests/
 ```
 
 Chi tiết thiết kế: xem `DESIGN.md`.
@@ -163,7 +162,7 @@ Chi tiết thiết kế: xem `DESIGN.md`.
 
 ```bash
 # Terminal 1 — API
-uv run uvicorn chakra_rag.api:app --reload --port 8000
+uv run uvicorn api:app --reload --port 8000
 
 # Terminal 2 — UI
 cd ui && npm install && npm run dev

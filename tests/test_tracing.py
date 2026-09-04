@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from unittest.mock import MagicMock, patch
 
-from chakra_rag.observability.tracing import ls_client, submit_feedback, trace_metadata
+from observability.tracing import ls_client, submit_feedback, trace_metadata
 
 
 def test_trace_metadata_shape():
@@ -39,8 +39,8 @@ def test_submit_feedback_calls_client(monkeypatch):
     fake_rt.session_name = "chakra_rag"
     fake_client = MagicMock()
     fake_client.create_project.return_value.id = "proj-1"
-    import chakra_rag.observability.tracing as tracing_mod
-    with patch("chakra_rag.observability.tracing.get_current_run_tree", return_value=fake_rt):
+    import observability.tracing as tracing_mod
+    with patch("observability.tracing.get_current_run_tree", return_value=fake_rt):
         old_client = tracing_mod._client_cache
         old_projects = dict(tracing_mod._project_cache)
         tracing_mod._client_cache = fake_client
@@ -66,14 +66,14 @@ def test_submit_feedback_calls_client(monkeypatch):
 def test_ls_client_warns_once_when_tracing_without_key(caplog, monkeypatch):
     monkeypatch.setenv("LANGSMITH_TRACING", "true")
     monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
-    import chakra_rag.observability.tracing as tracing_mod
+    import observability.tracing as tracing_mod
 
     old_client = tracing_mod._client_cache
     old_warned = tracing_mod._warned_unconfigured
     tracing_mod._client_cache = None
     tracing_mod._warned_unconfigured = False
     try:
-        with caplog.at_level(logging.WARNING, logger="chakra_rag.observability.tracing"):
+        with caplog.at_level(logging.WARNING, logger="observability.tracing"):
             assert ls_client() is None
             assert ls_client() is None
     finally:

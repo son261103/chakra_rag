@@ -14,17 +14,17 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from chakra_rag.config import get_config  # noqa: E402
-from chakra_rag.core.chunking import chunk_markdown  # noqa: E402
-from chakra_rag.core.embedding import Embedder  # noqa: E402
-from chakra_rag.core.retrieval import Retriever, reciprocal_rank_fusion  # noqa: E402
-from chakra_rag.core.verification import (  # noqa: E402
+from config import get_config  # noqa: E402
+from core.chunking import chunk_markdown  # noqa: E402
+from core.embedding import Embedder  # noqa: E402
+from core.retrieval import Retriever, reciprocal_rank_fusion  # noqa: E402
+from core.verification import (  # noqa: E402
     extract_citations,
     support_score,
     verify_answer,
 )
-from chakra_rag.ingestion.worker import _assign_chunk_ids  # noqa: E402
-from chakra_rag.storage.store import Store  # noqa: E402
+from ingestion.worker import _assign_chunk_ids  # noqa: E402
+from storage.store import Store  # noqa: E402
 
 EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 

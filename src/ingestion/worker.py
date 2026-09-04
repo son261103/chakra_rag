@@ -19,10 +19,10 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-from chakra_rag.config import Config
-from chakra_rag.core.chunking import Chunk, chunk_markdown, chunk_plain_text
-from chakra_rag.core.embedding import Embedder
-from chakra_rag.storage.store import Store
+from config import Config
+from core.chunking import Chunk, chunk_markdown, chunk_plain_text
+from core.embedding import Embedder
+from storage.store import Store
 
 logger = logging.getLogger(__name__)
 

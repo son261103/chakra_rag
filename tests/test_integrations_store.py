@@ -1,8 +1,8 @@
 """Unit tests cho các hàm lưu trữ tích hợp LLM trong Store."""
 from __future__ import annotations
 
-from chakra_rag.core.security import encrypt_integration_key
-from chakra_rag.storage.store import Store
+from core.security import encrypt_integration_key
+from storage.store import Store
 
 
 def test_create_and_list_integrations(tmp_path):

@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 
-from chakra_rag.service.container import ServiceContainer
+from service.container import ServiceContainer
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ router = APIRouter(tags=["files"])
 @router.post("/files")
 async def upload_file(file: UploadFile, request: Request) -> dict[str, Any]:
     """Lưu file upload và đưa vào hàng đợi ingest."""
-    from chakra_rag.config import get_config
+    from config import get_config
 
     service: ServiceContainer = request.app.state.service
     suffix = (file.filename or "").rsplit(".", 1)[-1]

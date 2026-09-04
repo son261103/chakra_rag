@@ -13,17 +13,17 @@ import logging
 from collections.abc import Iterator
 from typing import Any
 
-from chakra_rag.config import Config, get_config
-from chakra_rag.core.agent import RagAgent
-from chakra_rag.core.embedding import Embedder
-from chakra_rag.core.retrieval import Retriever
-from chakra_rag.ingestion.worker import IngestWorker
-from chakra_rag.observability.tracing import submit_feedback  # noqa: F401
-from chakra_rag.service.chat_service import ChatService
-from chakra_rag.service.conversation_service import ConversationService
-from chakra_rag.service.file_service import FileService
-from chakra_rag.service.integration_service import IntegrationService
-from chakra_rag.storage.store import Store
+from config import Config, get_config
+from core.agent import RagAgent
+from core.embedding import Embedder
+from core.retrieval import Retriever
+from ingestion.worker import IngestWorker
+from observability.tracing import submit_feedback  # noqa: F401
+from service.chat_service import ChatService
+from service.conversation_service import ConversationService
+from service.file_service import FileService
+from service.integration_service import IntegrationService
+from storage.store import Store
 
 logger = logging.getLogger(__name__)
 

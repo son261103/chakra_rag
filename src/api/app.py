@@ -8,17 +8,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from chakra_rag.api.routes import (
+from api.routes import (
     chat_router,
     conversations_router,
     files_router,
     health_router,
     integrations_router,
 )
-from chakra_rag.config import get_config
-from chakra_rag.ingestion.worker import IngestWorker
-from chakra_rag.observability.logging_setup import setup_logging
-from chakra_rag.service.container import ServiceContainer
+from config import get_config
+from ingestion.worker import IngestWorker
+from observability.logging_setup import setup_logging
+from service.container import ServiceContainer
 
 logger = logging.getLogger(__name__)
 

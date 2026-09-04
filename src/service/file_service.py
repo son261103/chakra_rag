@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from chakra_rag.config import Config, get_config
-from chakra_rag.ingestion.worker import IngestWorker, extract_text
-from chakra_rag.storage.store import Store
+from config import Config, get_config
+from ingestion.worker import IngestWorker, extract_text
+from storage.store import Store
 
 logger = logging.getLogger(__name__)
 

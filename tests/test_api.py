@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from chakra_rag import api as api_mod
+import api as api_mod
 
 
 @pytest.fixture()

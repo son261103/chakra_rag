@@ -14,10 +14,10 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from chakra_rag.config import Config, get_config
-from chakra_rag.core.security import decrypt_integration_key, encrypt_integration_key, mask_api_key
-from chakra_rag.observability.timing import elapsed_ms, timed
-from chakra_rag.storage.store import Store
+from config import Config, get_config
+from core.security import decrypt_integration_key, encrypt_integration_key, mask_api_key
+from observability.timing import elapsed_ms, timed
+from storage.store import Store
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +176,7 @@ class IntegrationService:
         api_key: str | None = None,
         integration_id: str | None = None,
     ) -> dict[str, Any]:
-        from chakra_rag.core.llm import ThinkingChatOpenAI
+        from core.llm import ThinkingChatOpenAI
 
         resolved_key = api_key
         if not resolved_key and integration_id:

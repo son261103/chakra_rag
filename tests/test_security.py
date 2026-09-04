@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from cryptography.fernet import Fernet
 
-from chakra_rag.core.security import (
+from core.security import (
     decrypt_integration_key,
     derive_fernet_key,
     encrypt_integration_key,

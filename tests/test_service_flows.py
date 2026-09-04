@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from chakra_rag.config import Config
+from config import Config
 
 # 11-key payload contract (ask() return và event "done" của ask_stream)
 PAYLOAD_KEYS = {
@@ -25,7 +25,7 @@ PAYLOAD_KEYS = {
 
 @pytest.fixture()
 def service(tmp_path, monkeypatch):
-    from chakra_rag.service import container as rs
+    from service import container as rs
 
     fake_embedder = MagicMock(return_value=None)
     fake_embedder.dim = 4
@@ -137,7 +137,7 @@ def test_ask_feedback_score_values(service):
 
     with patch.object(service, "agent") as ag:
         ag.ask.return_value = fr
-        with patch("chakra_rag.service.container.submit_feedback") as fb:
+        with patch("service.container.submit_feedback") as fb:
             service.ask("hỏi gì đó")
     scores = {c.args[0]: c.args[1] for c in fb.call_args_list}
     assert scores["invalid_citations"] == 1  # [fake1] không nằm trong tool_returned

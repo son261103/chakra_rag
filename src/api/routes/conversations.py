@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from chakra_rag.service.container import ServiceContainer
+from service.container import ServiceContainer
 
 router = APIRouter(tags=["conversations"])
 

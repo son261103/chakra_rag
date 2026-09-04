@@ -22,8 +22,8 @@ class _FakeEmbedder:
 @pytest.fixture()
 def make_service(tmp_path, monkeypatch):
     """RagService với FakeEmbedder — không load model thật."""
-    from chakra_rag.config import Config
-    from chakra_rag.service import container as rs
+    from config import Config
+    from service import container as rs
 
     monkeypatch.setattr(rs, "Embedder", _FakeEmbedder)
 
@@ -47,7 +47,7 @@ class FakeAgentResult:
 
 def test_telemetry_module_removed():
     with pytest.raises(ModuleNotFoundError):
-        import chakra_rag.observability.telemetry  # noqa: F401
+        import observability.telemetry  # noqa: F401
 
 
 def test_ask_submits_feedback_scores(make_service):
@@ -55,7 +55,7 @@ def test_ask_submits_feedback_scores(make_service):
     fake_result = FakeAgentResult()
     with patch.object(svc, "agent") as mock_agent:
         mock_agent.ask.return_value = fake_result
-        with patch("chakra_rag.service.container.submit_feedback") as fb:
+        with patch("service.container.submit_feedback") as fb:
             payload = svc.ask("câu hỏi?", mode="agent")
     assert payload["answer"]
     called_keys = {c.args[0] for c in fb.call_args_list}

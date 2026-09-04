@@ -28,8 +28,7 @@ uv run ruff check src tests scripts          # line-length 100, rules: E F I B U
 API + UI (two terminals):
 
 ```bash
-uv run python -m chakra_rag                  # starts FastAPI backend on :8000
-# or: uv run uvicorn chakra_rag.api:app --reload --port 8000
+uv run uvicorn api:app --reload --port 8000  # starts FastAPI backend on :8000
 cd ui && npm install && npm run dev          # :5173
 ```
 UI typecheck = `npm run build` (`tsc -b && vite build`); no eslint is configured.
@@ -38,7 +37,7 @@ LangSmith eval export: `uv run python scripts/export_eval_dataset.py --project c
 
 ## Configuration
 
-- `src/chakra_rag/config.py` is the composition root for env/`.env` (custom loader, `os.environ.setdefault` → real env vars win over `.env` values). Add new settings to the `Config` dataclass; exceptions: `observability/` reads `LANGSMITH_*` and `LOG_LEVEL` directly.
+- `src/config.py` is the composition root for env/`.env` (custom loader, `os.environ.setdefault` → real env vars win over `.env` values). Add new settings to the `Config` dataclass; exceptions: `observability/` reads `LANGSMITH_*` and `LOG_LEVEL` directly.
 - `.env` (from `.env.example`) defines `ENCRYPTION_KEY` (master key for integration storage). Model & API keys are managed dynamically via Settings UI.
 - LangSmith tracing is opt-in via `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`. Without an API key, all tracing/feedback hooks are no-ops.
 
@@ -51,7 +50,7 @@ LangSmith eval export: `uv run python scripts/export_eval_dataset.py --project c
 
 ## Structure
 
-- `src/chakra_rag/` (src-layout, hatchling): `core/` (chunking, embedding, retrieval+RRF, llm, agent, verification — the hand-written capability code), `storage/` (SQLite: files + chunks + vec0 + FTS5 + llm_integrations), `ingestion/`, `observability/` (LangSmith), `service/` (`RagService` + `IntegrationService`), `api/` (FastAPI `app.py` + modular `routes/`), `__main__.py`.
+- `src/` (flat layout, hatchling): `core/` (chunking, embedding, retrieval+RRF, llm, agent, verification, security), `storage/` (SQLite: files + chunks + vec0 + FTS5 + llm_integrations), `ingestion/`, `observability/` (LangSmith), `service/` (domain services + `container`), `api/` (FastAPI `app.py` + modular `routes/`), `config.py`.
 - `scripts/` is a package (`__init__.py`) — pytest `pythonpath=["."]` in `pyproject.toml` lets tests import it.
 - `data/`: `docs/` = seed corpus, `uploads/` = UI uploads, `chakra.db` = runtime artifact (gitignored — don't commit DBs, uploads, or logs).
 
