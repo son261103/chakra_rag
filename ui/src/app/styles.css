@@ -77,7 +77,8 @@
 }
 
 .new-chat-btn,
-.upload-btn {
+.upload-btn,
+.drawer-action-btn {
   @apply inline-flex w-full items-center justify-center gap-2 rounded-[10px] px-3 py-2.5 text-[13px] font-semibold leading-tight tracking-[-0.01em] transition;
   cursor: pointer;
 }
@@ -95,16 +96,19 @@
   @apply flex shrink-0 flex-col gap-1.5;
 }
 
-.upload-btn {
+.upload-btn,
+.drawer-action-btn {
   @apply border border-border bg-bg-elevated font-medium text-text;
 }
 
-.upload-btn:hover:not(:disabled) {
+.upload-btn:hover:not(:disabled),
+.drawer-action-btn:hover:not(:disabled) {
   @apply border-border bg-bg-elevated;
   filter: brightness(0.985);
 }
 
-.upload-btn:disabled {
+.upload-btn:disabled,
+.drawer-action-btn:disabled {
   @apply cursor-default opacity-55;
 }
 

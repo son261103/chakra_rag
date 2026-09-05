@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { AlertCircle, Check, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, FileText, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { deleteFile, reingestFile, uploadFile } from "../../api/client";
 import type { FileEntry, IngestProgress } from "../../api/types";
 
@@ -121,13 +121,11 @@ export default function FileDrawer({ open, onClose, files, progress, onUploaded,
       <div className="drawer-backdrop" onClick={onClose} />
       <aside className="drawer file-drawer" role="dialog" aria-label="Quản lý tài liệu">
         <div className="drawer-header">
-          <div className="flex items-center gap-2">
-            <h3>Tài liệu</h3>
-            {files.length > 0 && (
-              <span className="rounded-full border border-border/60 bg-bg-elevated px-2 py-0.5 font-mono text-[11px] text-muted">
-                {files.length}
-              </span>
-            )}
+          <div className="flex items-center gap-2.5">
+            <span className="grid size-7 place-items-center rounded-lg bg-accent text-accent-contrast">
+              <FileText size={15} />
+            </span>
+            <h3 className="font-semibold text-text">Tài liệu</h3>
           </div>
           <button type="button" className="drawer-close" onClick={onClose} aria-label="Đóng">
             <X size={15} />

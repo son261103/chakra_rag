@@ -7,7 +7,6 @@ import {
   KeyRound,
   Loader2,
   Plus,
-  Radio,
   Settings,
   Trash2,
   Wrench,
@@ -51,6 +50,7 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  const [detailItem, setDetailItem] = useState<IntegrationEntry | null>(null);
   // Form state
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -85,8 +85,18 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
       setFormOpen(false);
       setEditingId(null);
       setTestResult(null);
+      setDetailItem(null);
     }
   }, [open, fetchIntegrations]);
+
+  useEffect(() => {
+    if (!detailItem) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDetailItem(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detailItem]);
 
   if (!open) return null;
 
@@ -137,6 +147,7 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
     try {
       await activateIntegration(id);
       await fetchIntegrations();
+      setDetailItem((prev) => (prev && prev.id === id ? { ...prev, is_active: true } : prev));
       onChanged?.();
     } catch (e) {
       setActionError(String(e));
@@ -151,6 +162,7 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
     setActionError(null);
     try {
       await deleteIntegration(id);
+      if (detailItem?.id === id) setDetailItem(null);
       await fetchIntegrations();
       if (editingId === id) resetForm();
       onChanged?.();
@@ -239,10 +251,7 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
             <span className="grid size-7 place-items-center rounded-lg bg-accent text-accent-contrast">
               <Settings size={15} />
             </span>
-            <div>
-              <h3 className="font-semibold text-text">Cài đặt tích hợp LLM</h3>
-              <p className="text-[12px] text-muted">Điều chỉnh model, API key và endpoint OpenAI-compatible</p>
-            </div>
+            <h3 className="font-semibold text-text">Cài đặt tích hợp LLM</h3>
           </div>
           <button type="button" className="drawer-close" onClick={onClose} aria-label="Đóng">
             <X size={15} />
@@ -264,43 +273,6 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
               </button>
             </div>
           )}
-
-          {/* Active Integration Banner */}
-          <div className="rounded-xl border border-accent/25 bg-accent/5 p-3.5 text-[13px]">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                Đang kích hoạt sử dụng
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-green/15 px-2 py-0.5 text-[11px] font-medium text-green">
-                <span className="size-1.5 rounded-full bg-green" />
-                Live
-              </span>
-            </div>
-            {activeIntegration ? (
-              <div className="mt-2 flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <strong className="text-[14px] text-text">{activeIntegration.name}</strong>
-                  <code className="rounded bg-bg-soft px-1.5 py-0.5 text-[12px] font-mono text-accent">
-                    {activeIntegration.model}
-                  </code>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-3 text-[12px] text-muted">
-                  <span>URL: {activeIntegration.base_url}</span>
-                  <span>•</span>
-                  <span>
-                    API Key:{" "}
-                    {activeIntegration.has_api_key
-                      ? activeIntegration.masked_api_key
-                      : "(Không cần key)"}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-2 text-muted">
-                Chưa chọn tích hợp nào — đang dùng fallback từ <code>.env</code>
-              </div>
-            )}
-          </div>
 
           {/* Add / Edit Form (Toggleable) */}
           {formOpen ? (
@@ -488,19 +460,17 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
             <button
               type="button"
               onClick={startAdd}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border py-2.5 text-[13px] font-medium text-muted transition hover:border-accent hover:text-accent"
+              className="drawer-action-btn"
             >
               <Plus size={15} />
-              Thêm cấu hình tích hợp mới
+              <span>Thêm cấu hình tích hợp mới</span>
             </button>
           )}
 
           {/* Integrations Table / List */}
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                Danh sách tích hợp ({integrations.length})
-              </span>
+            <div className="flex items-center justify-between px-1 pt-1 text-muted">
+              <span className="block-label p-0">Danh sách tích hợp · {integrations.length}</span>
               {loading && <Loader2 size={13} className="animate-spin text-muted" />}
             </div>
 
@@ -510,34 +480,34 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
                 return (
                   <div
                     key={item.id}
-                    className={`flex flex-col gap-2 rounded-xl border p-3.5 transition ${
+                    className={`group relative flex flex-col gap-2 rounded-xl border p-3 transition-all ${
                       item.is_active
-                        ? "border-accent/40 bg-accent/5"
-                        : "border-border bg-bg-card hover:border-border/80"
+                        ? "border-accent/40 bg-accent/[0.04]"
+                        : "border-border bg-bg-card hover:border-border/90 hover:bg-bg-elevated/30"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-2">
+                    {/* Hàng 1: Trạng thái active + Tên + Badge/Nút kích hoạt + Action buttons */}
+                    <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => !item.is_active && handleActivate(item.id)}
-                          disabled={item.is_active || isBusy}
-                          className={`flex items-center gap-1 text-[12px] font-medium transition ${
+                        <span
+                          className={`size-2 shrink-0 rounded-full transition-all ${
                             item.is_active
-                              ? "cursor-default text-green"
-                              : "cursor-pointer text-muted hover:text-accent"
+                              ? "bg-green shadow-[0_0_6px_rgba(34,197,94,0.7)]"
+                              : "bg-muted/30"
                           }`}
-                          title={item.is_active ? "Đang sử dụng" : "Bấm để kích hoạt"}
+                          title={item.is_active ? "Đang kích hoạt" : "Chưa kích hoạt"}
+                        />
+                        <strong
+                          className="truncate text-[13.5px] font-semibold text-text"
+                          title={item.name}
                         >
-                          {item.is_active ? (
-                            <CheckCircle2 size={15} className="text-green shrink-0" />
-                          ) : (
-                            <Radio size={15} className="shrink-0" />
-                          )}
-                        </button>
-                        <strong className="truncate text-[13.5px] text-text" title={item.name}>
                           {item.name}
                         </strong>
+                        {item.is_active && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green/15 border border-green/20 px-2 py-0.2 text-[10.5px] font-medium text-green">
+                            Đang dùng
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
@@ -546,17 +516,27 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
                             type="button"
                             onClick={() => handleActivate(item.id)}
                             disabled={isBusy}
-                            className="rounded px-2 py-1 text-[11px] font-medium text-muted hover:bg-bg-soft hover:text-accent"
-                            title="Đặt làm mặc định"
+                            className="rounded-md border border-border/80 bg-bg-elevated px-2 py-0.5 text-[11px] font-medium text-muted transition hover:border-accent hover:text-accent hover:bg-accent/5 disabled:opacity-50"
+                            title="Kích hoạt cấu hình này"
                           >
-                            {isBusy ? <Loader2 size={12} className="animate-spin" /> : "Sử dụng"}
+                            {isBusy ? <Loader2 size={12} className="animate-spin" /> : "Kích hoạt"}
                           </button>
                         )}
                         <button
                           type="button"
+                          onClick={() => setDetailItem(item)}
+                          className="rounded p-1 text-muted transition hover:bg-bg-soft hover:text-text"
+                          title="Xem chi tiết"
+                          aria-label="Xem chi tiết"
+                        >
+                          <Eye size={14} />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => startEdit(item)}
-                          className="rounded p-1 text-muted hover:bg-bg-soft hover:text-text"
-                          title="Sửa cấu hình này"
+                          className="rounded p-1 text-muted transition hover:bg-bg-soft hover:text-text"
+                          title="Sửa cấu hình"
+                          aria-label="Sửa cấu hình"
                         >
                           <Wrench size={13} />
                         </button>
@@ -564,44 +544,195 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
                           type="button"
                           onClick={() => handleDelete(item.id, item.name)}
                           disabled={isBusy}
-                          className="rounded p-1 text-muted hover:bg-bg-soft hover:text-red"
-                          title="Xóa cấu hình này"
+                          className="rounded p-1 text-muted transition hover:bg-bg-soft hover:text-red disabled:opacity-50"
+                          title="Xóa cấu hình"
+                          aria-label="Xóa cấu hình"
                         >
                           <Trash2 size={13} />
                         </button>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-1 text-[12px] text-muted">
-                      <div className="flex items-center gap-1.5 font-mono">
-                        <span className="text-[11px] uppercase tracking-wide text-muted">Model:</span>
-                        <span className="rounded bg-bg-soft px-1.5 py-0.5 text-[11.5px] text-text">
-                          {item.model}
-                        </span>
-                      </div>
-                      <div className="truncate font-mono text-[11.5px]" title={item.base_url}>
-                        <span className="text-[11px] uppercase tracking-wide text-muted">URL: </span>
-                        {item.base_url}
-                      </div>
-                      <div className="flex items-center gap-1 font-mono text-[11.5px]">
-                        <KeyRound size={12} className="text-muted shrink-0" />
-                        <span>Key: </span>
-                        <span>{item.has_api_key ? item.masked_api_key : "(Trống)"}</span>
-                      </div>
+                    {/* Hàng 2: Model pill + Base URL */}
+                    <div className="flex items-center gap-2 pl-4 text-[12px] text-muted">
+                      <code
+                        className="rounded bg-bg-soft px-1.5 py-0.5 text-[11px] font-mono text-accent truncate max-w-[180px]"
+                        title={item.model}
+                      >
+                        {item.model}
+                      </code>
+                      <span className="text-muted/40">•</span>
+                      <span
+                        className="truncate font-mono text-[11.5px] text-muted/90"
+                        title={item.base_url}
+                      >
+                        {item.base_url.replace(/^https?:\/\//, "")}
+                      </span>
                     </div>
                   </div>
                 );
               })}
 
               {integrations.length === 0 && !loading && (
-                <div className="rounded-xl border border-dashed border-border p-6 text-center text-[13px] text-muted">
-                  Chưa có cấu hình nào. Bấm nút phía trên để thêm tích hợp mới.
+                <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-8 text-center text-muted">
+                  <div className="text-[13px] font-medium text-text">Chưa có cấu hình nào</div>
+                  <div className="text-[11.5px] text-muted">
+                    Bấm &quot;Thêm cấu hình tích hợp mới&quot; để thiết lập LLM
+                  </div>
+                </div>
+              )}
+
+              {integrations.length > 0 && !activeIntegration && (
+                <div className="rounded-lg bg-bg-soft/60 px-3 py-2 text-[11.5px] text-muted">
+                  Chưa kích hoạt cấu hình nào — hệ thống đang dùng model mặc định từ <code>.env</code>.
                 </div>
               )}
             </div>
           </div>
         </div>
       </aside>
+
+      {/* Detail Modal Popup */}
+      {detailItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-[2px]">
+          <div
+            className="fixed inset-0"
+            onClick={() => setDetailItem(null)}
+            aria-hidden="true"
+          />
+          <div
+            className="relative z-10 w-full max-w-[460px] rounded-2xl border border-border bg-bg-card shadow-2xl p-5 flex flex-col gap-4"
+            role="dialog"
+            aria-label="Chi tiết tích hợp LLM"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-border/70 pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="grid size-7 place-items-center rounded-lg bg-accent text-accent-contrast">
+                  <Eye size={15} />
+                </span>
+                <div>
+                  <h4 className="text-[14px] font-semibold text-text">Chi tiết tích hợp</h4>
+                  <p className="text-[11.5px] text-muted truncate max-w-[280px]">{detailItem.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailItem(null)}
+                className="drawer-close"
+                aria-label="Đóng"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Content Details */}
+            <div className="flex flex-col gap-2.5 text-[12.5px]">
+              <div className="flex items-center justify-between rounded-lg bg-bg-elevated/60 px-3 py-2">
+                <span className="text-muted">Trạng thái</span>
+                {detailItem.is_active ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-green/15 border border-green/20 px-2.5 py-0.5 text-[11px] font-medium text-green">
+                    <span className="size-1.5 rounded-full bg-green animate-pulse" />
+                    Đang kích hoạt
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-bg-soft px-2.5 py-0.5 text-[11px] font-medium text-muted">
+                    Chưa kích hoạt
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1 rounded-lg bg-bg-elevated/60 px-3 py-2">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-muted">Tên tích hợp</span>
+                <span className="font-medium text-text">{detailItem.name}</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1 rounded-lg bg-bg-elevated/60 px-3 py-2">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted">Provider</span>
+                  <span className="font-mono text-text capitalize text-[12px]">{detailItem.provider || "openai"}</span>
+                </div>
+                <div className="flex flex-col gap-1 rounded-lg bg-bg-elevated/60 px-3 py-2">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted">Model</span>
+                  <code className="font-mono text-accent truncate text-[12px]" title={detailItem.model}>
+                    {detailItem.model}
+                  </code>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1 rounded-lg bg-bg-elevated/60 px-3 py-2">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-muted">Endpoint (Base URL)</span>
+                <span className="font-mono text-text break-all text-[12px]">{detailItem.base_url}</span>
+              </div>
+
+              <div className="flex flex-col gap-1 rounded-lg bg-bg-elevated/60 px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted">API Key</span>
+                  <span className="text-[11px] text-muted">
+                    {detailItem.has_api_key ? "Đã lưu (mã hóa)" : "Không cần key"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 font-mono text-[12px] text-text">
+                  <KeyRound size={13} className="text-muted shrink-0" />
+                  <span className="truncate">{detailItem.has_api_key ? detailItem.masked_api_key : "(Trống)"}</span>
+                </div>
+              </div>
+
+              {(detailItem.created_at || detailItem.updated_at) && (
+                <div className="flex items-center justify-between px-1 text-[11px] text-muted">
+                  {detailItem.created_at && (
+                    <span>Tạo: {new Date(detailItem.created_at).toLocaleDateString("vi-VN")}</span>
+                  )}
+                  {detailItem.updated_at && (
+                    <span>Cập nhật: {new Date(detailItem.updated_at).toLocaleDateString("vi-VN")}</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-2 border-t border-border/70 pt-3">
+              {!detailItem.is_active && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleActivate(detailItem.id);
+                    setDetailItem((prev) => (prev ? { ...prev, is_active: true } : null));
+                  }}
+                  disabled={busyId === detailItem.id}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-accent-contrast transition hover:brightness-105 disabled:opacity-50"
+                >
+                  {busyId === detailItem.id ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <CheckCircle2 size={13} />
+                  )}
+                  Kích hoạt cấu hình này
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const item = detailItem;
+                  setDetailItem(null);
+                  startEdit(item);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-elevated px-3 py-1.5 text-[12px] font-medium text-text transition hover:bg-bg-soft"
+              >
+                <Wrench size={13} />
+                Chỉnh sửa
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetailItem(null)}
+                className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-muted hover:text-text transition"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
