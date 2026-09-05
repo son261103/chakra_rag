@@ -176,7 +176,7 @@ class IntegrationService:
         api_key: str | None = None,
         integration_id: str | None = None,
     ) -> dict[str, Any]:
-        from core.llm import ThinkingChatOpenAI
+        from agent.llm import ThinkingChatOpenAI
 
         resolved_key = api_key
         if not resolved_key and integration_id:

@@ -26,19 +26,6 @@ class RetrievalResult:
     max_score: float = 0.0
     low_confidence: bool = False
 
-    def to_tool_payload(self) -> list[dict[str, Any]]:
-        """Dạng gọn trả về cho LLM trong tool message."""
-        return [
-            {
-                "chunk_id": c["chunk_id"],
-                "doc": c["doc"],
-                "section": c["section"],
-                "score": round(c["score"], 3),
-                "text": c["text"],
-            }
-            for c in self.chunks
-        ]
-
 
 def reciprocal_rank_fusion(
     ranked_lists: list[list[dict[str, Any]]],

@@ -6,8 +6,8 @@ import logging
 from collections.abc import Iterator
 from typing import Any
 
+from agent.agent import AgentResult, RagAgent
 from config import Config, get_config
-from core.agent import AgentResult, RagAgent
 from core.retrieval import Retriever
 from core.verification import VerifiedAnswer, verify_answer
 from observability.timing import elapsed_ms, timed

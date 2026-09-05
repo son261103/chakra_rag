@@ -14,6 +14,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from agent.tools import ToolDeps, build_tools  # noqa: E402
 from config import get_config  # noqa: E402
 from core.chunking import chunk_markdown  # noqa: E402
 from core.embedding import Embedder  # noqa: E402
@@ -130,8 +131,19 @@ def test_retriever_returns_result_with_confidence(store, embedder):
     assert result.chunks
     assert result.max_score > 0.25
     assert not result.low_confidence
-    payload = result.to_tool_payload()
-    assert all("chunk_id" in c and "text" in c for c in payload)
+    assert all("chunk_id" in c and "text" in c for c in result.chunks)
+
+
+# ---------- agent tools ----------
+
+def test_build_tools_registry_wires_search_docs(store, embedder):
+    """build_tools tự nhận mọi tool đăng ký trong agent/tools (registry)."""
+    retriever = Retriever(store, embedder, top_k=3, min_score=0.25)
+    tools = build_tools(ToolDeps(retriever=retriever))
+    by_name = {t.name: t for t in tools}
+    assert "search_docs" in by_name
+    # `config` xuất hiện trong schema do @traceable wrap thêm param (hành vi có sẵn).
+    assert {"query", "top_k"} <= set(by_name["search_docs"].args.keys())
 
 
 # ---------- verify ----------

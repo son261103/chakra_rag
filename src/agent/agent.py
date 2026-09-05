@@ -1,4 +1,7 @@
-"""Agent RAG dùng LangGraph: LLM tự gọi tool `search_docs` để lấy dữ liệu.
+"""Agent RAG dùng LangGraph: LLM tự gọi tool (mặc định `search_docs`) để lấy dữ liệu.
+
+Tool định nghĩa trong agent/tools/ (registry @register_tool) — thêm tool mới
+chỉ cần tạo file ở đó, agent tự nhận qua build_tools().
 
 Guardrails:
 - recursion_limit = 2*max_turns + 1 (mỗi lượt tool = 2 bước graph) chống loop.
@@ -15,13 +18,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolMessage
-from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
-from langsmith import get_current_run_tree, traceable
+from langsmith import get_current_run_tree
 
+from agent.llm import ThinkingChatOpenAI
+from agent.tools import ToolDeps, build_tools
 from config import Config
-from core.llm import ThinkingChatOpenAI
-from core.retrieval import RetrievalResult, Retriever
+from core.retrieval import Retriever
 from core.security import decrypt_integration_key
 
 logger = logging.getLogger(__name__)
@@ -103,7 +106,7 @@ def _extract_reasoning(messages: list[BaseMessage]) -> str:
     """Gom nội dung suy luận (thinking) từ các AIMessage, nếu provider trả về.
 
     Một số provider OpenAI-compatible (DeepSeek, Qwen3...) trả reasoning_content;
-    ThinkingChatOpenAI (core/llm.py) giữ nó trong additional_kwargs và gửi lại
+    ThinkingChatOpenAI (agent/llm.py) giữ nó trong additional_kwargs và gửi lại
     ở lượt sau để tool-call nhiều lượt không bị provider từ chối.
     """
     parts: list[str] = []
@@ -171,20 +174,13 @@ class RagAgent:
         model, base_url, api_key = self.resolve_active_llm_config()
         fingerprint = (model, base_url, api_key)
         if self._agent is None or self._current_integration_fingerprint != fingerprint:
-            retriever = self.retriever
-
-            @tool
-            @traceable(run_type="retriever", name="search_docs_tool")
-            def search_docs(query: str, top_k: int = 5) -> str:
-                """Tìm kiếm tài liệu nội bộ. Trả về JSON danh sách các đoạn liên quan kèm chunk_id, nguồn và điểm."""  # noqa: E501
-                result: RetrievalResult = retriever.search(query, top_k)
-                return json.dumps(result.to_tool_payload(), ensure_ascii=False)
-
+            deps = ToolDeps(retriever=self.retriever, store=self.store)
+            tools = build_tools(deps)
             llm = self._make_llm()
-            self._agent = create_react_agent(llm, [search_docs], prompt=SYSTEM_PROMPT)
+            self._agent = create_react_agent(llm, tools, prompt=SYSTEM_PROMPT)
             self._current_integration_fingerprint = fingerprint
         return self._agent
-        
+
     def _history_messages(
         self, history: list[dict[str, str]] | None
     ) -> list[tuple[str, str]]:

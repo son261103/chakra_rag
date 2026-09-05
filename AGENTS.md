@@ -50,7 +50,7 @@ LangSmith eval export: `uv run python scripts/export_eval_dataset.py --project c
 
 ## Structure
 
-- `src/` (flat layout, hatchling): `core/` (chunking, embedding, retrieval+RRF, llm, agent, verification, security), `storage/` (SQLite: files + chunks + vec0 + FTS5 + llm_integrations), `ingestion/`, `observability/` (LangSmith), `service/` (domain services + `container`), `api/` (FastAPI `app.py` + modular `routes/`), `config.py`.
+- `src/` (flat layout, hatchling): `core/` (RAG domain: chunking, embedding, retrieval+RRF, verification, security), `agent/` (LLM orchestration: `agent.py` LangGraph loop, `llm.py` reasoning pass-through, `tools/` — one file per tool, `@register_tool` registry; a new tool file imported in `agent/tools/__init__.py` is auto-wired via `build_tools`), `storage/` (SQLite: files + chunks + vec0 + FTS5 + llm_integrations), `ingestion/`, `observability/` (LangSmith), `service/` (domain services + `container`), `api/` (FastAPI `app.py` + modular `routes/`), `config.py`. Dependency direction: `agent → core`/`storage`, never the reverse.
 - `scripts/` is a package (`__init__.py`) — pytest `pythonpath=["."]` in `pyproject.toml` lets tests import it.
 - `data/`: `docs/` = seed corpus, `uploads/` = UI uploads, `chakra.db` = runtime artifact (gitignored — don't commit DBs, uploads, or logs).
 

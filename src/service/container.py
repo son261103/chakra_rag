@@ -9,8 +9,8 @@ Các domain service chuyên biệt:
 
 from __future__ import annotations
 
+from agent.agent import RagAgent
 from config import Config, get_config
-from core.agent import RagAgent
 from core.embedding import Embedder
 from core.retrieval import Retriever
 from ingestion.worker import IngestWorker

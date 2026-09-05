@@ -275,7 +275,9 @@ chakra_rag/
 ├── logs/                    # logs ứng dụng
 ├── src/                         # kiến trúc phân tầng, đặt trực tiếp dưới src/
 │   ├── config.py                # cấu hình tập trung Config
-│   ├── core/                    # nghiệp vụ lõi: chunking, embedding, retrieval, agent, verify, security
+│   ├── core/                    # nghiệp vụ lõi: chunking, embedding, retrieval, verify, security
+│   ├── agent/                   # lớp LLM orchestration: agent.py (vòng lặp LangGraph), llm.py
+│   │   └── tools/               #   tool registry (@register_tool → build_tools); thêm tool mới ở đây
 │   ├── storage/store.py         # SQLite (chunks + vec0 + FTS5 + files + conversations + llm_integrations)
 │   ├── ingestion/worker.py      # worker nền: parse → chunk → embed, cập nhật tiến trình
 │   ├── service/                 # domain services (chat, conversation, file, integration) + container
