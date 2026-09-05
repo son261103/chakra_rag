@@ -191,6 +191,7 @@ export default function App() {
   const ensureConversation = async (): Promise<string> => {
     if (activeConversationId) return activeConversationId;
     const conv = await createConversation();
+    activeIdRef.current = conv.id;
     setActiveConversationId(conv.id);
     setConversations((prev) => [conv, ...prev.filter((c) => c.id !== conv.id)]);
     return conv.id;
@@ -200,6 +201,7 @@ export default function App() {
     if (asking) return;
     try {
       const conv = await createConversation();
+      activeIdRef.current = conv.id;
       setActiveConversationId(conv.id);
       setHistory([]);
       setStreaming(null);
@@ -405,7 +407,7 @@ export default function App() {
 
       <main className="chat-area">
         <div ref={chatScrollRef} className="chat-scroll side-scroll">
-          {history.length === 0 && !asking && (
+          {history.length === 0 && !asking && !streaming && (
             <div className="empty-state">
               {/* Logo & Headline */}
               <div className="empty-hero">
