@@ -67,7 +67,7 @@ class Config:
     top_k: int = 5
     rrf_k: int = 60
     min_score: float = 0.25
-    max_agent_turns: int = 4
+    max_agent_turns: int = 12
     # Số lượt user+assistant gần nhất đưa vào multi-turn (mỗi lượt = 1 user + 1 assistant).
     chat_history_turns: int = 8
 
@@ -110,7 +110,7 @@ def get_config() -> Config:
         top_k=_env_int("TOP_K", 5),
         rrf_k=_env_int("RRF_K", 60),
         min_score=_env_float("MIN_SCORE", 0.25),
-        max_agent_turns=_env_int("MAX_AGENT_TURNS", 4),
+        max_agent_turns=_env_int("MAX_AGENT_TURNS", 12),
         chat_history_turns=_env_int("CHAT_HISTORY_TURNS", 8),
         api_allowed_origins=[
             s.strip()
