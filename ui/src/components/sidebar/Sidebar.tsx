@@ -30,27 +30,35 @@ export default function Sidebar({
             <Sparkles size={15} />
           </span>
           <span className="brand-name">Chakra RAG</span>
-          <ThemeToggle />
-          <button
-            type="button"
-            className="settings-icon-btn"
-            onClick={onOpenSettings}
-            title="Cài đặt Model & API Key"
-            aria-label="Cài đặt LLM"
-          >
-            <Settings size={15} />
-          </button>
+          <div className="brand-actions">
+            <ThemeToggle />
+            <button
+              type="button"
+              className="settings-icon-btn"
+              onClick={onOpenSettings}
+              title="Cài đặt Model & API Key"
+              aria-label="Cài đặt LLM"
+            >
+              <Settings size={15} />
+            </button>
+          </div>
         </div>
 
-        <button className="new-chat-btn" onClick={onNewChat} type="button">
-          <Plus size={15} />
-          Chat mới
-        </button>
-
-        <button className="files-btn" onClick={onOpenFiles} type="button">
-          <FileText size={15} />
-          Tài liệu
-        </button>
+        <div className="sidebar-actions">
+          <button className="new-chat-btn" onClick={onNewChat} type="button">
+            <Plus size={15} />
+            Chat mới
+          </button>
+          <button
+            className="files-icon-btn"
+            onClick={onOpenFiles}
+            type="button"
+            title="Tài liệu"
+            aria-label="Tài liệu"
+          >
+            <FileText size={15} />
+          </button>
+        </div>
       </div>
 
       <section className="panel chat-panel">

@@ -35,6 +35,11 @@
   @apply text-[14.5px] font-semibold tracking-[-0.01em];
 }
 
+/* Nhóm nút icon phải — tách khỏi brand bằng đường kẻ dọc */
+.brand-actions {
+  @apply ml-auto flex items-center gap-1.5 border-l border-border pl-2.5;
+}
+
 /* Shared panels: cùng ngôn ngữ surface */
 .panel {
   @apply flex min-h-[0] flex-col gap-2 rounded-2xl border border-border bg-bg-card p-2.5;
@@ -66,50 +71,6 @@
   letter-spacing: 0.07em;
 }
 
-/* Index sits flush inside the panel */
-.index-row {
-  @apply flex shrink-0 items-center gap-2.5 px-1.5 pt-0.5;
-}
-
-.index-row .status-dot {
-  @apply size-2 shrink-0 rounded-full bg-muted;
-}
-
-.index-row.ready .status-dot {
-  @apply bg-green;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
-}
-
-.index-row.busy .status-dot {
-  @apply bg-amber;
-  animation: pulse 1.2s infinite;
-}
-
-@keyframes pulse {
-  50% {
-    opacity: 0.4;
-  }
-}
-
-.index-status-text {
-  @apply flex min-w-0 flex-col gap-px text-xs;
-}
-
-.index-status-text strong {
-  @apply text-[13px] font-semibold tracking-[-0.01em];
-}
-
-.index-status-text span {
-  @apply text-[11.5px] text-muted;
-}
-
-.progress-bar {
-  @apply mx-1 h-1 shrink-0 overflow-hidden rounded-full bg-bg-elevated;
-}
-
-.progress-fill {
-  @apply h-full bg-accent transition-[width] duration-300 ease-out;
-}
 
 .btn-plus {
   @apply inline-flex w-[1.1em] items-center justify-center font-medium opacity-95;
@@ -201,11 +162,11 @@
 }
 
 .chat-item-delete {
-  @apply mr-1 h-7 w-7 shrink-0 cursor-pointer rounded-md border-none bg-transparent text-base leading-none text-muted transition-colors;
+  @apply mr-1 inline-grid h-[26px] w-[26px] shrink-0 cursor-pointer place-items-center rounded-md border-none bg-transparent text-[13px] leading-none text-muted transition-colors;
 }
 
 .chat-item-delete:hover {
-  @apply bg-bg-card text-red;
+  @apply bg-red/20 text-red;
 }
 
 .file-item {
@@ -279,27 +240,26 @@
   @apply text-accent;
 }
 
-.theme-toggle {
-  @apply ml-auto;
-}
-
 .theme-toggle-icon {
   @apply leading-none;
 }
 
-/* ================= Files button (sidebar) ================= */
+/* ================= Sidebar actions (chat mới + tài liệu icon, cùng 1 dòng) ================= */
 
-.files-btn {
-  @apply inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-border bg-bg-elevated px-3 py-2.5 text-[13px] font-semibold leading-tight tracking-[-0.01em] text-text transition;
+.sidebar-actions {
+  @apply flex shrink-0 items-stretch gap-1.5;
 }
 
-.files-btn:hover {
-  @apply border-accent/40;
-  filter: brightness(0.985);
+.new-chat-btn {
+  @apply flex-1;
 }
 
-.files-btn-icon {
-  @apply text-sm;
+.files-icon-btn {
+  @apply inline-grid w-10 cursor-pointer place-items-center rounded-[10px] border border-border bg-bg-elevated text-[15px] text-text transition;
+}
+
+.files-icon-btn:hover {
+  @apply border-accent/40 text-accent;
 }
 
 /* ================= File drawer ================= */

@@ -37,10 +37,13 @@ export default function FileDrawer({ open, onClose, files, progress, onUploaded,
   const [uploading, setUploading] = useState(false);
   const [busyFileId, setBusyFileId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const ready = progress?.status === "ready" || progress?.status === "partial";
   const processing = progress?.status === "processing";
-
+  const totalChunks =
+    progress?.chunks_total && progress.chunks_total > 0
+      ? progress.chunks_total
+      : files.reduce((acc, f) => acc + (f.chunks_done || 0), 0);
   if (!open) return null;
 
   const handleFiles = async (selected: FileList | null) => {
@@ -89,51 +92,87 @@ export default function FileDrawer({ open, onClose, files, progress, onUploaded,
     }
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!uploading && !busyFileId) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (uploading || busyFileId) return;
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      void handleFiles(e.dataTransfer.files);
+    }
+  };
+
   return (
     <>
       <div className="drawer-backdrop" onClick={onClose} />
       <aside className="drawer file-drawer" role="dialog" aria-label="Quản lý tài liệu">
         <div className="drawer-header">
-          <h3>Tài liệu</h3>
+          <div className="flex items-center gap-2">
+            <h3>Tài liệu</h3>
+            {files.length > 0 && (
+              <span className="rounded-full border border-border/60 bg-bg-elevated px-2 py-0.5 font-mono text-[11px] text-muted">
+                {files.length}
+              </span>
+            )}
+          </div>
           <button type="button" className="drawer-close" onClick={onClose} aria-label="Đóng">
             <X size={15} />
           </button>
         </div>
 
         <div className="drawer-body file-drawer-body">
-          {/* Index status */}
-          <div className={`index-row ${ready ? "ready" : processing ? "busy" : "idle"}`}>
-            <span className="status-dot" />
-            <div className="index-status-text">
-              <strong>
-                {ready ? "Index sẵn sàng" : processing ? "Đang xử lý tài liệu…" : "Chưa có dữ liệu"}
-              </strong>
-              {progress && progress.chunks_total > 0 ? (
-                <span>
-                  {progress.chunks_done}/{progress.chunks_total} chunks · {progress.percent}%
-                </span>
-              ) : (
-                <span>Upload PDF / MD / TXT để bắt đầu</span>
-              )}
-            </div>
-          </div>
-
+          {/* Tiến trình xử lý (chỉ hiện khi đang embedding / indexing) */}
           {processing && progress && (
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${progress.percent}%` }} />
+            <div className="rounded-xl border border-amber/30 bg-amber/5 p-3 text-xs">
+              <div className="flex items-center justify-between font-medium">
+                <span className="flex items-center gap-1.5 text-amber">
+                  <Loader2 size={13} className="animate-spin" />
+                  Đang xử lý tài liệu…
+                </span>
+                <span className="font-mono text-[11px] text-muted">
+                  {progress.chunks_done}/{progress.chunks_total} chunks ({progress.percent}%)
+                </span>
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-bg-elevated">
+                <div
+                  className="h-full bg-amber transition-all duration-300 ease-out"
+                  style={{ width: `${progress.percent}%` }}
+                />
+              </div>
             </div>
           )}
 
           {/* Upload */}
           <div className="knowledge-actions">
             <button
-              className="upload-btn"
+              className={`upload-btn ${isDragging ? "border-accent bg-accent/10" : ""}`}
               onClick={() => inputRef.current?.click()}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
               disabled={uploading || !!busyFileId}
               type="button"
             >
-              <Plus size={15} />
-              {uploading ? "Đang tải lên…" : "Thêm tài liệu"}
+              {uploading ? (
+                <Loader2 size={15} className="animate-spin text-accent" />
+              ) : (
+                <Plus size={15} />
+              )}
+              <span>{uploading ? "Đang tải lên…" : "Thêm tài liệu"}</span>
               <span className="upload-hint">.md · .txt · .pdf</span>
             </button>
           </div>
@@ -148,8 +187,15 @@ export default function FileDrawer({ open, onClose, files, progress, onUploaded,
 
           {actionError && <div className="error-banner small">{actionError}</div>}
 
-          {/* File list */}
-          <div className="block-label file-drawer-label">Tài liệu · {files.length}</div>
+          {/* Danh sách tài liệu */}
+          <div className="flex items-center justify-between px-1 pt-1 text-muted">
+            <span className="block-label p-0">Tài liệu · {files.length}</span>
+            {totalChunks > 0 && (
+              <span className="font-mono text-[11px] text-muted/80">
+                {totalChunks} chunks
+              </span>
+            )}
+          </div>
           <ul className="file-list file-drawer-list side-scroll">
             {files.map((f) => {
               const busy = busyFileId === f.file_id;
@@ -172,7 +218,7 @@ export default function FileDrawer({ open, onClose, files, progress, onUploaded,
                       </span>
                     )}
                     {f.status === "ready" && f.chunks_done > 0 && (
-                      <span className="file-meta quiet">{f.chunks_done}</span>
+                      <span className="file-meta quiet">{f.chunks_done} chunks</span>
                     )}
                   </button>
                   <div className="file-actions">
@@ -204,7 +250,14 @@ export default function FileDrawer({ open, onClose, files, progress, onUploaded,
                 </li>
               );
             })}
-            {files.length === 0 && <li className="file-empty">Chưa có tài liệu</li>}
+            {files.length === 0 && (
+              <li className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-8 text-center text-muted">
+                <div className="text-[13px] font-medium text-text">Chưa có tài liệu</div>
+                <div className="text-[11.5px] text-muted">
+                  Bấm &quot;Thêm tài liệu&quot; hoặc kéo thả file vào đây để bắt đầu
+                </div>
+              </li>
+            )}
           </ul>
         </div>
       </aside>
