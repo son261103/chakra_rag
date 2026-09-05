@@ -7,7 +7,7 @@
 | Chia nhỏ tài liệu | Heading + paragraph chunking (~300 token, overlap 50), giữ metadata nguồn |
 | Tạo embeddings | `paraphrase-multilingual-MiniLM-L12-v2` (local, 384d, L2-normalize) |
 | Truy xuất | Hybrid: vector (`sqlite-vec`) + lexical (FTS5) → Reciprocal Rank Fusion |
-| Trả lời + trích dẫn | Agent gọi tool `search_docs` (LangGraph); mỗi claim kèm `[chunk_id]` |
+| Trả lời + trích dẫn | Agent gọi tool `search_docs` → `read_chunk` (LangGraph); mỗi claim kèm `[chunk_id]` |
 | Hạn chế hallucination | Retrieval gate + prompt ràng buộc + citation verifier độc lập LLM |
 | Mã chạy được + hướng dẫn | README này + API / Web UI kèm tài liệu chi tiết |
 
@@ -127,12 +127,16 @@ câu hỏi
     → agent (LangGraph create_react_agent, max 4 lượt)
          tools: search_docs (chính) + read_chunk + list_documents
          search_docs: hybrid vector top-k + FTS5 top-k → RRF → threshold
+                      → trả chunk_id + excerpt ~150 ký tự (pointer-first)
+         read_chunk:  đọc full text đoạn được chọn + 1 đoạn kề trước/sau
     → LLM trả lời + [chunk_id]
     → citation verifier
     → {answer, citations, search_trace, low_confidence, unsupported_claims}
 ```
 
 **Vì sao hybrid + RRF?** Vector bắt nghĩa; FTS bắt số/tên riêng chính xác. RRF chỉ cần hạng, không cần chuẩn hóa cosine vs BM25-like.
+
+**Vì sao search tách khỏi read?** Pattern chuẩn của agent product thật (Claude Code, Perplexity, Deep Research): search trả nhiều kết quả nên chỉ trả con trỏ + excerpt ngắn — tiết kiệm context window (token rác giảm chất lượng attention) và cho LLM quyền quyết định đoạn nào đáng đọc. `read_chunk` kéo nội dung đầy đủ (kèm ngữ cảnh kề) đúng lúc cần.
 
 **Vì sao agent?** Agent tự reformulate query / multi-hop, gọi `search_docs` nhiều lượt để gom đủ bằng chứng trước khi trả lời.
 

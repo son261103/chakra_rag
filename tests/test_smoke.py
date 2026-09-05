@@ -17,12 +17,16 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from langchain_core.messages import AIMessage, ToolMessage  # noqa: E402
 
-from agent.agent import _build_tool_trace, _collect_tool_chunks  # noqa: E402
+from agent.agent import (  # noqa: E402
+    _build_tool_trace,
+    _collect_tool_chunks,
+    _hydrate_evidence,
+)
 from agent.tools import ToolDeps, build_tools  # noqa: E402
 from config import get_config  # noqa: E402
 from core.chunking import chunk_markdown  # noqa: E402
 from core.embedding import Embedder  # noqa: E402
-from core.retrieval import Retriever, reciprocal_rank_fusion  # noqa: E402
+from core.retrieval import RetrievalResult, Retriever, reciprocal_rank_fusion  # noqa: E402
 from core.verification import (  # noqa: E402
     extract_citations,
     support_score,
@@ -150,17 +154,65 @@ def test_build_tools_registry_wires_all_tools(store, embedder):
     assert {"query", "top_k"} <= set(by_name["search_docs"].args.keys())
 
 
-def test_read_chunk_tool_returns_full_chunk(store, embedder):
-    vec = embedder.embed_one("nội dung mẫu")
-    store.insert_chunk("doc#a#0", "doc.md", "a", "Nội dung đầy đủ của đoạn.", 0, 26, vec)
+class _StubRetriever:
+    """Retriever giả: trả chunk cố định, text dài để test excerpt."""
+
+    def search(self, query: str, top_k: int = 5):
+        long_text = "Nội dung dài để kiểm tra excerpt. " * 20
+        chunk = {
+            "chunk_id": "doc#s#0",
+            "doc": "doc.md",
+            "section": "s",
+            "score": 0.7,
+            "text": long_text,
+        }
+        return RetrievalResult(chunks=[chunk], max_score=0.7, low_confidence=False)
+
+
+def test_search_docs_returns_pointer_payload(store, embedder):
+    """search_docs pointer-first: chỉ excerpt rút gọn + chunk_id, không full text."""
+    tools = build_tools(ToolDeps(retriever=_StubRetriever(), store=store))
+    search_docs = next(t for t in tools if t.name == "search_docs")
+
+    payload = json.loads(search_docs.invoke({"query": "gì đó", "top_k": 1}))
+    assert payload[0]["chunk_id"] == "doc#s#0"
+    assert "excerpt" in payload[0]
+    assert "text" not in payload[0]  # full text chỉ đến từ read_chunk
+    assert len(payload[0]["excerpt"]) <= 152  # 150 + dấu … khi cắt
+    assert payload[0]["excerpt"].endswith("…")
+
+
+def test_read_chunk_tool_returns_chunk_with_neighbors(store, embedder):
+    """read_chunk trả chunk chính + đúng 1 chunk kề trước/sau trong cùng doc."""
+    texts = [
+        ("doc#s#0", 0, "Đoạn đầu."),
+        ("doc#s#1", 10, "Nội dung đầy đủ của đoạn giữa."),
+        ("doc#s#2", 20, "Đoạn cuối."),
+        ("other#x#0", 0, "Tài liệu khác."),
+    ]
+    for cid, start, text in texts:
+        store.insert_chunk(
+            cid,
+            "doc.md" if cid.startswith("doc#") else "other.md",
+            "s",
+            text,
+            start,
+            start + len(text),
+            embedder.embed_one(text),
+        )
     retriever = Retriever(store, embedder, top_k=3, min_score=0.25)
     tools = build_tools(ToolDeps(retriever=retriever, store=store))
     read_chunk = next(t for t in tools if t.name == "read_chunk")
 
-    payload = json.loads(read_chunk.invoke({"chunk_id": "doc#a#0"}))
-    assert payload["chunk_id"] == "doc#a#0"
-    assert payload["doc"] == "doc.md"
+    payload = json.loads(read_chunk.invoke({"chunk_id": "doc#s#1"}))
+    assert payload["chunk_id"] == "doc#s#1"
     assert "Nội dung đầy đủ" in payload["text"]
+    assert [c["chunk_id"] for c in payload["before"]] == ["doc#s#0"]
+    assert [c["chunk_id"] for c in payload["after"]] == ["doc#s#2"]
+
+    # Chunk đầu doc: không có kề trước
+    first = json.loads(read_chunk.invoke({"chunk_id": "doc#s#0"}))
+    assert first["before"] == [] and [c["chunk_id"] for c in first["after"]] == ["doc#s#1"]
 
     missing = json.loads(read_chunk.invoke({"chunk_id": "khong#ton#tai"}))
     assert "error" in missing
@@ -177,9 +229,18 @@ def test_list_documents_tool_lists_files(store, embedder):
 
 
 def test_tool_trace_and_evidence_multi_tool():
-    """Trace nhận diện đủ 3 loại tool; bằng chứng citation chỉ gồm chunk thật."""
-    search_results = [{"chunk_id": "s#0", "doc": "a.md", "section": "a", "score": 0.7, "text": "x"}]
-    read_chunk = {"chunk_id": "s#0", "doc": "a.md", "section": "a", "text": "x"}
+    """Trace nhận diện đủ 3 loại tool; bằng chứng citation gồm chunk thật + chunk kề."""
+    search_results = [
+        {"chunk_id": "s#0", "doc": "a.md", "section": "a", "score": 0.7, "excerpt": "x…"}
+    ]
+    read_payload = {
+        "chunk_id": "s#0",
+        "doc": "a.md",
+        "section": "a",
+        "text": "x",
+        "before": [{"chunk_id": "s#b", "text": "trước"}],
+        "after": [{"chunk_id": "s#a", "text": "sau"}],
+    }
     docs = [{"doc": "a.md", "status": "ready", "chunks_total": 1, "chunks_done": 1}]
     messages = [
         AIMessage(
@@ -195,7 +256,7 @@ def test_tool_trace_and_evidence_multi_tool():
                 {"name": "read_chunk", "args": {"chunk_id": "s#0"}, "id": "c2", "type": "tool_call"}
             ],
         ),
-        ToolMessage(content=json.dumps(read_chunk), tool_call_id="c2"),
+        ToolMessage(content=json.dumps(read_payload), tool_call_id="c2"),
         AIMessage(
             content="",
             tool_calls=[
@@ -208,11 +269,44 @@ def test_tool_trace_and_evidence_multi_tool():
     trace = _build_tool_trace(messages)
     assert [t["name"] for t in trace] == ["search_docs", "read_chunk", "list_documents"]
     assert trace[0]["query"] == "phép" and trace[0]["max_score"] == 0.7
-    assert trace[1]["found"] is True and trace[1]["doc"] == "a.md"
+    # Trace read_chunk: chunk chính + 2 chunk ngữ cảnh, đánh dấu is_context đúng.
+    assert trace[1]["found"] is True
+    assert [(c["chunk_id"], c["is_context"]) for c in trace[1]["chunks"]] == [
+        ("s#0", False),
+        ("s#b", True),
+        ("s#a", True),
+    ]
     assert trace[2]["n_docs"] == 1
 
     evidence = _collect_tool_chunks(messages)
-    assert set(evidence) == {"s#0"}  # list_documents không thành bằng chứng citation
+    # list_documents không thành bằng chứng; chunk kề trong read_chunk CÓ.
+    assert set(evidence) == {"s#0", "s#b", "s#a"}
+
+
+def test_hydrate_evidence_replaces_excerpt_with_full_text(store, embedder):
+    """Evidence từ search_docs (excerpt) được nạp full text từ store; id lạ không được thêm."""
+    store.insert_chunk(
+        "doc#s#0", "doc.md", "s", "Nội dung đầy đủ của đoạn.", 0, 26,
+        embedder.embed_one("nội dung"),
+    )
+    evidence = {
+        "doc#s#0": {
+            "chunk_id": "doc#s#0",
+            "doc": "doc.md",
+            "section": "s",
+            "score": 0.7,
+            "excerpt": "Nội dung đầy đủ…",
+        }
+    }
+    hydrated = _hydrate_evidence(evidence, store)
+    assert hydrated["doc#s#0"]["text"] == "Nội dung đầy đủ của đoạn."
+    assert "excerpt" not in hydrated["doc#s#0"]
+
+    # Chunk đã có text đầy đủ (từ read_chunk) → giữ nguyên, không đụng store.
+    full = {"doc#s#0": {"chunk_id": "doc#s#0", "doc": "doc.md", "text": "đã đủ"}}
+    assert _hydrate_evidence(full, store) is full
+    # Store None (agent khởi tạo không kèm store) → trả nguyên vẹn.
+    assert _hydrate_evidence(evidence, None) is evidence
 
 
 # ---------- verify ----------

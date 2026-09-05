@@ -514,6 +514,11 @@
   font-family: var(--font-mono);
 }
 
+.tool-context-label {
+  @apply text-[10px] text-muted/80 select-none;
+  font-family: var(--font-mono);
+}
+
 .tool-no-result {
   @apply text-xs text-muted p-1;
 }

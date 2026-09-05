@@ -37,11 +37,18 @@ export interface SearchToolEntry {
   max_score: number;
 }
 
-export interface ReadToolEntry {
-  name: "read_chunk";
+/** Chunk một lượt read_chunk trả về: đoạn chính hoặc đoạn ngữ cảnh kề trước/sau. */
+export interface ReadChunkItem {
   chunk_id: string;
   doc: string;
   section: string;
+  is_context: boolean;
+}
+
+export interface ReadToolEntry {
+  name: "read_chunk";
+  chunk_id: string;
+  chunks: ReadChunkItem[];
   found: boolean;
 }
 

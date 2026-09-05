@@ -183,6 +183,42 @@ class Store:
             ).fetchone()
         return dict(row) if row else None
 
+    def get_chunk_neighborhood(self, chunk_id: str) -> dict[str, Any] | None:
+        """Chunk được hỏi + đúng 1 chunk kề trước/sau trong cùng tài liệu.
+
+        read_chunk dùng điều này để trả cả vùng ngữ cảnh (đúng tinh thần
+        Read của Claude Code): chunk dễ cắt lỡ câu, ngữ cảnh kề giúp LLM
+        hiểu trọn ý mà không phải nạp cả tài liệu. Trả None khi chunk_id
+        không tồn tại.
+        """
+        with self._lock:
+            center = self.conn.execute(
+                "SELECT * FROM chunks WHERE chunk_id = ?", (chunk_id,)
+            ).fetchone()
+            if center is None:
+                return None
+            before = self.conn.execute(
+                """
+                SELECT chunk_id, doc, section, text FROM chunks
+                WHERE doc = ? AND (char_start, id) < (?, ?)
+                ORDER BY char_start DESC, id DESC LIMIT 1
+                """,
+                (center["doc"], center["char_start"], center["id"]),
+            ).fetchall()
+            after = self.conn.execute(
+                """
+                SELECT chunk_id, doc, section, text FROM chunks
+                WHERE doc = ? AND (char_start, id) > (?, ?)
+                ORDER BY char_start ASC, id ASC LIMIT 1
+                """,
+                (center["doc"], center["char_start"], center["id"]),
+            ).fetchall()
+        return {
+            "chunk": dict(center),
+            "before": [dict(r) for r in before],
+            "after": [dict(r) for r in after],
+        }
+
     def list_chunks_by_doc(self, doc: str) -> list[dict[str, Any]]:
         """Toàn bộ chunk của một tài liệu, theo thứ tự vị trí trong file."""
         with self._lock:

@@ -35,9 +35,13 @@ function inlineHeader(trace: ToolTraceEntry): { text: ReactNode; title: string }
   return null;
 }
 
-/** Tóm tắt bên phải card: số kết quả / tên doc / số tài liệu. */
+/** Tóm tắt bên phải card: số kết quả / số đoạn đọc / tên doc / số tài liệu. */
 function summaryText(trace: ToolTraceEntry): string {
-  if (trace.name === "read_chunk") return trace.found ? trace.doc : "Không tìm thấy";
+  if (trace.name === "read_chunk") {
+    if (!trace.found) return "Không tìm thấy";
+    const n = trace.chunks.filter((c) => c.is_context).length;
+    return n > 0 ? `${trace.chunks.length} đoạn` : "1 đoạn";
+  }
   if (trace.name === "list_documents") return `${trace.n_docs} tài liệu`;
   return `${trace.n_results} kết quả`;
 }
@@ -95,14 +99,21 @@ export default function ToolCallBlock({ trace, running, onCitationClick }: Props
               )}
               {trace.name === "read_chunk" &&
                 (trace.found ? (
-                  <button
-                    type="button"
-                    className="tool-result-chip"
-                    onClick={() => onCitationClick(trace.chunk_id)}
-                    title={`Xem đoạn: ${trace.chunk_id}`}
-                  >
-                    {trace.chunk_id}
-                  </button>
+                  trace.chunks.map((c, i) => (
+                    <span key={`${c.chunk_id}-${i}`} className="inline-flex items-center gap-1.5">
+                      {c.is_context && (
+                        <span className="tool-context-label">{i === 0 ? "← trước" : "sau →"}</span>
+                      )}
+                      <button
+                        type="button"
+                        className="tool-result-chip"
+                        onClick={() => onCitationClick(c.chunk_id)}
+                        title={`Xem đoạn: ${c.chunk_id}`}
+                      >
+                        {c.chunk_id}
+                      </button>
+                    </span>
+                  ))
                 ) : (
                   <span className="tool-no-result">Chunk không tồn tại hoặc đã bị xóa</span>
                 ))}

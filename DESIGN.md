@@ -36,10 +36,11 @@ data/docs/*.md (corpus nhỏ, tiếng Việt, tự soạn)
                  │      ▼                                               │
                  │  search_docs = hybrid retrieval                      │
                  │    (embed → vector top-k + FTS5 → RRF + threshold)   │
-                 │      │ chunks [{chunk_id, score, text, nguồn}]       │
+                 │      │ pointer [{chunk_id, score, excerpt, nguồn}]    │
                  │      ▼                                               │
                  │  kết quả trả lại LLM (message role="tool")           │
-                 │  → LLM tìm thêm lượt nữa, HOẶC chốt câu trả lời     │
+                 │  → LLM đọc đoạn liên quan (read_chunk) HOẶC          │
+                 │    tìm thêm lượt nữa HOẶC chốt câu trả lời           │
                  └──────────────────────────────────────────────────────┘
                                                                │
                           final answer kèm [chunk_id] mỗi claim │
@@ -124,22 +125,41 @@ Bộ tool (định nghĩa trong `src/agent/tools/`, mỗi tool một file, tự 
 phải sửa agent):
 
 - `search_docs(query, top_k)` — tool chính: hybrid retrieval (vector + FTS5 + RRF + threshold).
-- `read_chunk(chunk_id)` — đọc đầy đủ một đoạn theo id lấy từ kết quả search.
+  **Pointer-first** (pattern chuẩn của agent product thật — Claude Code Grep, Perplexity,
+  Deep Research): chỉ trả `chunk_id, doc, section, score` + `excerpt` ~150 ký tự để LLM
+  đánh giá liên quan, KHÔNG trả full text. Lý do: context window là tài nguyên hữu hạn
+  (context rot — token rác từ chunk kém liên quan chủ động làm giảm chất lượng attention);
+  search luôn lấy nhiều hơn nhu cầu thực, nên chỉ trỏ con trỏ xuống phễu.
+- `read_chunk(chunk_id)` — bước "kéo nội dung vào đúng lúc cần" của phễu: đọc đầy đủ một
+  đoạn theo id lấy từ kết quả search, kèm đúng 1 chunk kề trước + 1 chunk kề sau trong
+  cùng tài liệu (chunk 300 ký tự dễ cắt lỡ câu — ngữ cảnh kề giúp hiểu trọn ý).
 - `list_documents()` — liệt kê tài liệu đang có; giúp agent nói chính xác
   "tài liệu không có thông tin này" thay vì đoán mò khi search rỗng.
+
+**Hydrate evidence cho verifier**: search_docs chỉ trả excerpt nên bằng chứng citation
+gom từ lượt search không có full text. `_hydrate_evidence` (agent.py) nạp lại full text
+từ store cho các chunk đó trước khi verify — tính chống bịa cite không đổi (chunk_id vẫn
+phải do tool trả về trong phiên mới được vào tập bằng chứng), nhưng n-gram support check
+chạy trên text thật thay vì excerpt bị cắt.
 
 **Mental model quan trọng nhất**: tool chỉ là một JSON schema khai báo với LLM. LLM **không tự chạy gì cả** — nó chỉ sinh ra yêu cầu có cấu trúc `{"name": "search_docs", "arguments": {...}}`; **code của mình** thực thi yêu cầu đó (chạy hybrid retrieval) rồi trả kết quả về cho LLM dưới dạng message `role="tool"`. Lặp lại cho đến khi LLM thôi gọi tool và chốt câu trả lời. LangGraph (`create_react_agent`) đóng gói đúng vòng lặp này — phần nghiệp vụ (retrieval, verifier) vẫn là code tự viết.
 
 **Luồng thực tế** (trace một hội thoại):
 ```
 1. system: "Trả lời dựa trên tài liệu nội bộ. Muốn tra cứu PHẢI gọi
-   search_docs. Mỗi claim kèm [chunk_id]. Không đủ dữ liệu → nói rõ."
+   search_docs, sau đó read_chunk đoạn liên quan nhất. Mỗi claim kèm
+   [chunk_id]. Không đủ dữ liệu → nói rõ."
 2. user:   "Mức hoàn phí tối đa là bao nhiêu?"
 3. assistant: tool_call search_docs(query="mức hoàn phí tối đa", top_k=5)
-4. tool:   [{chunk_id:"hoanphi#s2#1", score:0.82, text:"...tối đa 5 triệu..."}, ...]
-5. assistant: tool_call search_docs(query="điều kiện áp dụng hoàn phí", top_k=5)
-6. tool:   [{chunk_id:"hoanphi#s3#0", ...}, ...]
-7. assistant: "Mức hoàn phí tối đa là 5 triệu đồng [hoanphi#s2#1],
+4. tool:   [{chunk_id:"hoanphi#s2#1", score:0.82, excerpt:"...tối đa 5 triệ…"}, ...]
+5. assistant: tool_call read_chunk(chunk_id="hoanphi#s2#1")
+6. tool:   {chunk_id:"hoanphi#s2#1", text:"...tối đa 5 triệu đồng...",
+            before:[...], after:[...]}
+7. assistant: tool_call search_docs(query="điều kiện áp dụng hoàn phí", top_k=5)
+8. tool:   [{chunk_id:"hoanphi#s3#0", excerpt:"..."}, ...]
+9. assistant: tool_call read_chunk(chunk_id="hoanphi#s3#0")
+10. tool:  {chunk_id:"hoanphi#s3#0", text:"...", before:[...], after:[...]}
+11. assistant: "Mức hoàn phí tối đa là 5 triệu đồng [hoanphi#s2#1],
    áp dụng khi... [hoanphi#s3#0]"   ← câu trả lời cuối
 ```
 
@@ -173,7 +193,7 @@ def ask(question, max_turns=4):
 
 **Guardrails (bắt buộc — agent thêm failure mode mới):**
 - `recursion_limit = 2*max_turns + 1`: chống loop; quá lượt thì ép chốt bằng bằng chứng tốt nhất đã thu thập (parse từ messages), kèm cờ cảnh báo.
-- Citation verifier **chỉ chấp nhận chunk_id xuất hiện trong các ToolMessage** của phiên — agent bịa nguồn là bị phát hiện ngay. Bằng chứng gom từ mọi tool trả về chunk (search trả list, read_chunk trả dict đơn); tool không trả chunk (list_documents) tự động bị loại.
+- Citation verifier **chỉ chấp nhận chunk_id xuất hiện trong các ToolMessage** của phiên — agent bịa nguồn là bị phát hiện ngay. Bằng chứng gom từ mọi tool trả về chunk (search trả list pointer, read_chunk trả dict chính + before/after — chunk kề cũng là bằng chứng vì LLM thấy text của chúng); tool không trả chunk (list_documents) tự động bị loại. Chunk từ search chỉ có excerpt nên được `_hydrate_evidence` nạp lại full text từ store trước khi verify.
 - `low_confidence` programmatic: max score **chỉ trong các lượt search** dưới ngưỡng → flag, bất kể LLM nói gì (read/list không có score cosine, không được kéo flag oan).
 - LLM trả lời thẳng không gọi tool → phát hiện được (messages không có tool_call); có thể ép lượt đầu bằng `tool_choice` nếu cần.
 - Model phải hỗ trợ function calling (GPT-4o-mini, Qwen, Claude...; model local nhỏ hỗ trợ thất thường) — đây là yêu cầu bắt buộc vì agent gọi tool là luồng trả lời duy nhất.

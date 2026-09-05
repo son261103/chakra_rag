@@ -86,7 +86,7 @@ const EMPTY_STREAM = (question: string): StreamingState => ({
 function emptyToolEntry(name: string): ToolTraceEntry {
   switch (name) {
     case "read_chunk":
-      return { name: "read_chunk", chunk_id: "", doc: "", section: "", found: false };
+      return { name: "read_chunk", chunk_id: "", chunks: [], found: false };
     case "list_documents":
       return { name: "list_documents", n_docs: 0, docs: [] };
     default:

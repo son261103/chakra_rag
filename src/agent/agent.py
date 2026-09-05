@@ -3,6 +3,10 @@
 Tool định nghĩa trong agent/tools/ (registry @register_tool) — thêm tool mới
 chỉ cần tạo file ở đó, agent tự nhận qua build_tools().
 
+Phễu 2 bước theo pattern pointer-first: search_docs trả chunk_id + excerpt,
+read_chunk mới trả text đầy đủ (+ chunk kề). Evidence citation được hydrate
+full text từ store trước khi verify (xem _hydrate_evidence).
+
 Guardrails:
 - recursion_limit = 2*max_turns + 1 (mỗi lượt tool = 2 bước graph) chống loop.
 - Bằng chứng hợp lệ = tập chunk_id xuất hiện trong ToolMessage của phiên;
@@ -33,21 +37,27 @@ SYSTEM_PROMPT = (
     "Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu nội bộ kết hợp "
     "kiến thức chuyên môn.\n"
     "\n"
-    "Công cụ tra cứu:\n"
-    "- search_docs(query, top_k): tìm kiếm hybrid trên toàn bộ tài liệu — công cụ CHÍNH.\n"
-    "- read_chunk(chunk_id): đọc đầy đủ một đoạn tài liệu theo chunk_id (lấy từ search_docs).\n"
-    "- list_documents(): liệt kê tài liệu đang có trong hệ thống (tên, trạng thái, số đoạn).\n"
+    "Công cụ tra cứu (phễu: tìm trước — đọc sau):\n"
+    "- search_docs(query, top_k): tìm hybrid trên toàn bộ tài liệu — công cụ CHÍNH để "
+    "định vị bằng chứng. Chỉ trả về chunk_id, nguồn, điểm và excerpt ~150 ký tự "
+    "(bản rút gọn để đánh giá liên quan).\n"
+    "- read_chunk(chunk_id): đọc nội dung đầy đủ một đoạn tài liệu theo chunk_id (lấy "
+    "từ search_docs), kèm đoạn liền trước/sau trong cùng tài liệu.\n"
+    "- list_documents(): liệt kê tài liệu đang có trong hệ thống (tên, trạng thái, số đoạn).\n"  # noqa: E501
     "\n"
     "Quy tắc bắt buộc:\n"
-    "1. Ưu tiên tra cứu tài liệu: Với câu hỏi về dữ liệu, hồ sơ, sự kiện, dự án hoặc thông tin "
-    "nội bộ, PHẢI gọi search_docs trước để tìm bằng chứng.\n"
-    "2. Trích dẫn nguồn: Mọi khẳng định lấy từ tài liệu nội bộ phải kèm mã trích dẫn [chunk_id] "
-    "của đoạn tài liệu tương ứng (chunk_id từ kết quả search_docs hoặc read_chunk).\n"
-    "3. Tự dừng và dùng kiến thức chung (tránh lặp tool): Chỉ tra cứu tối đa 1-2 lần. Nếu tài liệu "
-    "không có thông tin phù hợp, hoặc câu hỏi là về lập trình, giải thích khái niệm, tư vấn ý "
-    "tưởng chung ngoài tài liệu: PHẢI DỪNG việc gọi tool ngay, nêu rõ nếu tài liệu không đề cập "
-    "và dùng kiến thức chung hữu ích để trả lời chu đáo cho người dùng (không gắn trích dẫn khi "
-    "dùng kiến thức chung). Tuyệt đối không gọi tool lặp đi lặp lại với các từ khóa tương tự.\n"
+    "1. Ưu tiên tra cứu tài liệu: Với câu hỏi về dữ liệu, hồ sơ, sự kiện, dự án hoặc "
+    "thông tin nội bộ, PHẢI gọi search_docs trước để tìm bằng chứng.\n"
+    "2. Đọc trước khi trích dẫn: KHÔNG trả lời dựa trên excerpt. Chọn 1-2 đoạn liên "
+    "quan nhất từ kết quả search và gọi read_chunk để lấy nội dung đầy đủ trước khi "
+    "khẳng định. Mọi khẳng định lấy từ tài liệu nội bộ phải kèm mã trích dẫn "
+    "[chunk_id] của đoạn đã đọc (chunk_id từ read_chunk).\n"
+    "3. Tự dừng và dùng kiến thức chung (tránh lặp tool): Tối đa 2 lượt search và 2 lượt "
+    "read cho một câu hỏi. Nếu tài liệu không có thông tin phù hợp, hoặc câu hỏi là "
+    "về lập trình, giải thích khái niệm, tư vấn ý tưởng chung ngoài tài liệu: PHẢI "
+    "DỪNG việc gọi tool ngay, nêu rõ nếu tài liệu không đề cập và dùng kiến thức chung "
+    "hữu ích để trả lời chu đáo cho người dùng (không gắn trích dẫn khi dùng kiến thức "
+    "chung). Tuyệt đối không gọi tool lặp đi lặp lại với các từ khóa tương tự.\n"
     "4. Trả lời bằng tiếng Việt rõ ràng, mạch lạc, đi thẳng vào câu hỏi.\n"
 )
 
@@ -74,13 +84,23 @@ def _parse_tool_payload(content: Any) -> Any:
 def _iter_chunks(payload: Any) -> list[dict[str, Any]]:
     """Các chunk hợp lệ trong payload tool: list kết quả (search) hoặc dict đơn (read_chunk).
 
-    Mọi dict có chunk_id đều tính là bằng chứng citation; tool không trả chunk
-    (như list_documents) tự động bị bỏ qua.
+    Với read_chunk, payload dict gồm chunk chính (chunk_id, doc, section, text)
+    cùng before/after (các dict chunk_id + text) — tất cả đều là bằng chứng
+    citation vì LLM thực sự nhìn thấy text của chúng.
+    Mọi dict có chunk_id đều tính; tool không trả chunk (như list_documents)
+    tự động bị bỏ qua.
     """
     if isinstance(payload, list):
         return [c for c in payload if isinstance(c, dict) and c.get("chunk_id")]
     if isinstance(payload, dict) and payload.get("chunk_id"):
-        return [payload]
+        chunks = [payload]
+        for key in ("before", "after"):
+            for c in payload.get(key) or []:
+                if isinstance(c, dict) and c.get("chunk_id"):
+                    c.setdefault("doc", payload.get("doc"))
+                    c.setdefault("section", payload.get("section"))
+                    chunks.append(c)
+        return chunks
     return []
 
 
@@ -90,13 +110,20 @@ def _tool_trace_entry(name: str, args: dict[str, Any], payload: Any) -> dict[str
     Trả None với tool chưa có renderer; caller fallback về shape search.
     """
     if name == "read_chunk":
-        chunk = payload if isinstance(payload, dict) and payload.get("chunk_id") else None
+        chunks = _iter_chunks(payload)
         return {
             "name": "read_chunk",
             "chunk_id": str(args.get("chunk_id", "")),
-            "doc": str(chunk.get("doc", "")) if chunk else "",
-            "section": str(chunk.get("section", "")) if chunk else "",
-            "found": chunk is not None,
+            "chunks": [
+                {
+                    "chunk_id": str(c.get("chunk_id", "")),
+                    "doc": str(c.get("doc", "")),
+                    "section": str(c.get("section", "")),
+                    "is_context": c.get("chunk_id") != args.get("chunk_id"),
+                }
+                for c in chunks
+            ],
+            "found": bool(chunks),
         }
     if name == "list_documents":
         docs = payload if isinstance(payload, list) else []
@@ -159,6 +186,29 @@ def _collect_tool_chunks(messages: list[BaseMessage]) -> dict[str, dict[str, Any
         for chunk in _iter_chunks(_parse_tool_payload(msg.content)):
             chunks[chunk["chunk_id"]] = chunk
     return chunks
+
+
+def _hydrate_evidence(
+    tool_returned: dict[str, dict[str, Any]], store: Any
+) -> dict[str, dict[str, Any]]:
+    """Nạp lại full text từ store cho các chunk evidence còn thiếu text.
+
+    search_docs giờ chỉ trả excerpt nên evidence từ search không đủ text đầy
+    đủ cho citation verifier (n-gram support check). Chunk nào thiếu text
+    (hoặc text bị cắt) được nạp lại từ store — tính chống bịa cite không đổi:
+    chunk_id vẫn phải do tool trả về trong phiên thì mới vào được đây.
+    """
+    if store is None:
+        return tool_returned
+    for chunk_id, chunk in tool_returned.items():
+        if "text" in chunk and "excerpt" not in chunk:
+            continue  # read_chunk đã trả text đầy đủ
+        full = store.get_chunk(chunk_id)
+        if full:
+            hydrated = {**chunk, "text": full["text"]}
+            hydrated.pop("excerpt", None)
+            tool_returned[chunk_id] = hydrated
+    return tool_returned
 
 
 def _extract_reasoning(messages: list[BaseMessage]) -> str:
@@ -298,7 +348,7 @@ class RagAgent:
                 low_confidence=True,
             )
 
-        tool_returned = _collect_tool_chunks(messages)
+        tool_returned = _hydrate_evidence(_collect_tool_chunks(messages), self.store)
         trace = _build_tool_trace(messages)
         # Điểm tin cậy chỉ đánh giá các lượt search; read/list không có score
         # cosine nên không được kéo max_score về 0 (tránh flag oan).
@@ -417,8 +467,6 @@ class RagAgent:
                         entry = _tool_trace_entry("search_docs", args, payload)
                     trace.append(entry)
                     event: dict[str, Any] = {"type": "tool_call", "index": len(trace), **entry}
-                    if entry["name"] == "search_docs":
-                        event["chunks"] = _iter_chunks(payload)
                     yield event
 
                     # Lượt AI kế tiếp là lượt mới: index tool_call reset về 0, nên
@@ -439,7 +487,7 @@ class RagAgent:
         max_score = max(search_scores, default=0.0)
         result = AgentResult(
             answer="".join(pending_content).strip(),
-            tool_returned=tool_returned,
+            tool_returned=_hydrate_evidence(tool_returned, self.store),
             search_trace=trace,
             reasoning="".join(reasoning_parts),
             # Giống ask_agent: không lượt search nào thì không có cơ sở để cảnh báo.
