@@ -16,8 +16,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-# \w trong Python 3 là unicode-aware — match cả chunk_id chứa tiếng Việt có dấu
-_CITATION_RE = re.compile(r"\[([\w#.\-]+)\]")
+# \w trong Python 3 là unicode-aware — match cả chunk_id chứa tiếng Việt có dấu.
+# Một cặp [] có thể chứa NHIỀU id phân tách bởi "," / ";" (model hay gộp nguồn
+# kiểu [a#s#0, b#s#1]); cụm có chữ tự do ("[xem doc#a#0]") không match —
+# mỗi phần phải là id hợp lệ thì cả cụm mới được coi là trích dẫn.
+_CITATION_RE = re.compile(r"\[([\w#.\-]+(?:\s*[,;]\s*[\w#.\-]+)*)\]")
 _STOPWORDS_VI = {
     "và", "của", "là", "có", "trong", "cho", "không", "được", "với", "này",
     "một", "các", "khi", "đã", "để", "từ", "đến", "theo", "như", "hoặc",
@@ -42,11 +45,12 @@ class VerifiedAnswer:
 
 
 def extract_citations(text: str) -> list[str]:
-    """Kéo toàn bộ [chunk_id] khỏi câu trả lời, giữ thứ tự, bỏ trùng."""
+    """Kéo toàn bộ [chunk_id] khỏi câu trả lời (hỗ trợ gộp [id1, id2]), giữ thứ tự, bỏ trùng."""
     seen: list[str] = []
-    for match in _CITATION_RE.findall(text):
-        if match not in seen:
-            seen.append(match)
+    for group in _CITATION_RE.findall(text):
+        for cid in re.split(r"[\s,;]+", group):
+            if cid and cid not in seen:
+                seen.append(cid)
     return seen
 
 

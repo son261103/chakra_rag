@@ -267,14 +267,20 @@
   @apply mt-auto shrink-0 px-0.5 pt-1 text-center text-[10.5px] tracking-[0.02em] text-muted opacity-85;
 }
 
-/* ================= Theme toggle ================= */
+/* ================= Icon buttons (brand row: theme + settings) ================= */
 
-.theme-toggle {
-  @apply ml-auto grid size-8 cursor-pointer place-items-center rounded-lg border border-border bg-bg-elevated text-[13px] text-muted transition;
+.theme-toggle,
+.settings-icon-btn {
+  @apply grid size-8 cursor-pointer place-items-center rounded-lg border border-border bg-bg-elevated text-[13px] text-muted transition;
 }
 
-.theme-toggle:hover {
+.theme-toggle:hover,
+.settings-icon-btn:hover {
   @apply text-accent;
+}
+
+.theme-toggle {
+  @apply ml-auto;
 }
 
 .theme-toggle-icon {
@@ -294,17 +300,6 @@
 
 .files-btn-icon {
   @apply text-sm;
-}
-
-/* ================= Settings button (sidebar) ================= */
-
-.settings-btn {
-  @apply inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-border bg-bg-elevated px-3 py-2 text-[13px] font-semibold leading-tight tracking-[-0.01em] text-text transition;
-}
-
-.settings-btn:hover {
-  @apply border-accent/40 text-accent;
-  filter: brightness(0.985);
 }
 
 /* ================= File drawer ================= */
@@ -638,13 +633,14 @@
 }
 
 .cite-chip {
-  @apply mx-0.5 inline-flex items-center justify-center cursor-pointer rounded-md border border-accent/30 bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent transition-all leading-none;
+  @apply mx-0.5 inline-flex items-center justify-center cursor-pointer rounded-md border border-accent/30 bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent leading-none;
   font-family: var(--font-mono);
   vertical-align: baseline;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 
 .cite-chip:hover {
-  @apply border-accent bg-accent/25 scale-105;
+  @apply border-accent bg-accent/25;
 }
 
 .cite-chip.invalid {

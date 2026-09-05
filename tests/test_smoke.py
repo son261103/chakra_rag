@@ -260,6 +260,18 @@ def test_verify_answer_flags_unsupported_claim():
     assert verified.unsupported_claims  # claim không được chunk đỡ
 
 
+def test_extract_citations_multi_id_group():
+    """Model hay gộp nhiều nguồn chung một cặp [] — phải extract đủ từng id."""
+    text = "Kinh nghiệm chứng minh qua 2 dự án [a#exp#0, b#exp#1] và 1 mảnh [c#skill#2]."
+    assert extract_citations(text) == ["a#exp#0", "b#exp#1", "c#skill#2"]
+
+
+def test_extract_citations_ignores_prose_inside_brackets():
+    """Cặp [] chứa chữ tự do (không phải id) không bị coi là trích dẫn."""
+    text = "Chi tiết ở phần kinh nghiệm [xem phần Experience], mức lương 5 triệu [luong#muc#0]."
+    assert extract_citations(text) == ["luong#muc#0"]
+
+
 def test_config_has_new_fields():
     cfg = get_config()
     assert isinstance(cfg.api_allowed_origins, list) and cfg.api_allowed_origins

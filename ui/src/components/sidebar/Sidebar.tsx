@@ -31,6 +31,15 @@ export default function Sidebar({
           </span>
           <span className="brand-name">Chakra RAG</span>
           <ThemeToggle />
+          <button
+            type="button"
+            className="settings-icon-btn"
+            onClick={onOpenSettings}
+            title="Cài đặt Model & API Key"
+            aria-label="Cài đặt LLM"
+          >
+            <Settings size={15} />
+          </button>
         </div>
 
         <button className="new-chat-btn" onClick={onNewChat} type="button">
@@ -41,11 +50,6 @@ export default function Sidebar({
         <button className="files-btn" onClick={onOpenFiles} type="button">
           <FileText size={15} />
           Tài liệu
-        </button>
-
-        <button className="settings-btn" onClick={onOpenSettings} type="button" title="Cài đặt Model & API Key">
-          <Settings size={15} />
-          Cài đặt LLM
         </button>
       </div>
 
