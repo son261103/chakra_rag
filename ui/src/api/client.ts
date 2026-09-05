@@ -1,7 +1,6 @@
 /** Gọi API backend qua dev proxy /api (xem vite.config.ts). */
 
 import type {
-  AskResponse,
   ChunkDetail,
   ConversationDetail,
   ConversationSummary,
@@ -108,24 +107,6 @@ export async function deleteConversation(id: string): Promise<void> {
   );
 }
 
-export async function ask(
-  question: string,
-  mode: "agent" | "stuff" = "agent",
-  conversationId?: string | null
-): Promise<AskResponse> {
-  return handle<AskResponse>(
-    await fetch(`${BASE}/ask`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        question,
-        mode,
-        conversation_id: conversationId ?? undefined,
-      }),
-    })
-  );
-}
-
 /** Streaming version: gọi /ask/stream, parse SSE, gọi onEvent cho từng event.
  *
  * Có watchdog im-lặng: nếu quá ASK_INACTIVITY_MS mà không nhận thêm byte nào
@@ -139,9 +120,8 @@ const ASK_INACTIVITY_MS = 100_000;
 export async function askStream(
   question: string,
   onEvent: (ev: StreamEvent) => void,
-  options?: { mode?: "agent" | "stuff"; conversationId?: string | null; signal?: AbortSignal }
+  options?: { conversationId?: string | null; signal?: AbortSignal }
 ): Promise<void> {
-  const mode = options?.mode ?? "agent";
   const conversationId = options?.conversationId ?? undefined;
   const controller = new AbortController();
 
@@ -165,7 +145,6 @@ export async function askStream(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         question,
-        mode,
         conversation_id: conversationId,
       }),
       signal: controller.signal,

@@ -1,4 +1,4 @@
-"""RagService không còn phụ thuộc Telemetry; feedback được gọi với đúng metrics."""
+"""ServiceContainer không còn phụ thuộc Telemetry; feedback được gọi với đúng metrics."""
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -21,7 +21,7 @@ class _FakeEmbedder:
 
 @pytest.fixture()
 def make_service(tmp_path, monkeypatch):
-    """RagService với FakeEmbedder — không load model thật."""
+    """ServiceContainer với FakeEmbedder — không load model thật."""
     from config import Config
     from service import container as rs
 
@@ -42,7 +42,6 @@ class FakeAgentResult:
     search_trace = []
     reasoning = ""
     low_confidence = False
-    mode = "agent"
 
 
 def test_telemetry_module_removed():
@@ -53,10 +52,10 @@ def test_telemetry_module_removed():
 def test_ask_submits_feedback_scores(make_service):
     svc = make_service()
     fake_result = FakeAgentResult()
-    with patch.object(svc, "agent") as mock_agent:
-        mock_agent.ask.return_value = fake_result
+    with patch.object(svc.chat, "agent") as mock_agent:
+        mock_agent.ask_agent.return_value = fake_result
         with patch("service.container.submit_feedback") as fb:
-            payload = svc.ask("câu hỏi?", mode="agent")
+            payload = svc.chat.ask("câu hỏi?")
     assert payload["answer"]
     called_keys = {c.args[0] for c in fb.call_args_list}
     assert {"invalid_citations", "unsupported_claims", "low_confidence"} <= called_keys
@@ -69,9 +68,9 @@ def test_ask_stream_yields_done_with_payload(make_service):
         yield {"type": "answer", "delta": "xin chào"}
         yield {"type": "_final", "result": FakeAgentResult()}
 
-    with patch.object(svc, "agent") as mock_agent:
+    with patch.object(svc.chat, "agent") as mock_agent:
         mock_agent.stream_agent.return_value = iter(events())
-        collected = list(svc.ask_stream("hi"))
+        collected = list(svc.chat.ask_stream("hi"))
     types = [e["type"] for e in collected]
     assert types[-1] == "done"
     done = collected[-1]

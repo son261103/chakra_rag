@@ -44,7 +44,7 @@ LangSmith eval export: `uv run python scripts/export_eval_dataset.py --project c
 ## Behavioral gotchas
 
 - The API **never auto-seeds** `data/docs` — the index contains only user-uploaded files or existing database records.
-- Agent mode requires a function-calling model; otherwise use `--mode stuff`.
+- The only answering path is agent mode: the LLM calls the `search_docs` tool, so it requires a function-calling model.
 - The citation verifier flags `invalid_citations` / `unsupported_claims` rather than silently dropping them, and its support check is a cheap n-gram proxy (not NLI) — paraphrased claims can be flagged. `MIN_SCORE=0.25` is tuned to MiniLM's compressed cosine scale (~0.3 ≈ noise).
 - Vite dev proxy strips the `/api` prefix when forwarding to :8000 — backend routes have no `/api`; CORS allowlist covers localhost:5173 only.
 

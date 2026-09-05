@@ -1,11 +1,5 @@
 """Agent RAG dùng LangGraph: LLM tự gọi tool `search_docs` để lấy dữ liệu.
 
-Hai mode:
-- `agent` (mặc định): create_react_agent — LLM quyết định khi nào tìm, tìm gì,
-  có thể tìm nhiều lượt rồi mới trả lời.
-- `stuff`: fallback cổ điển — retrieve một lần, nhét context vào prompt.
-  Dùng khi model không hỗ trợ function calling.
-
 Guardrails:
 - recursion_limit = 2*max_turns + 1 (mỗi lượt tool = 2 bước graph) chống loop.
 - Bằng chứng hợp lệ = tập chunk_id xuất hiện trong ToolMessage của phiên;
@@ -51,22 +45,6 @@ SYSTEM_PROMPT = (
     "6. Nếu cần, gọi search_docs nhiều lần với truy vấn khác nhau để đủ thông tin.\n"
 )
 
-STUFF_PROMPT_TEMPLATE = (
-    "Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu nội bộ. Dưới đây là các đoạn tài liệu "
-    "truy xuất được:\n"
-    "\n"
-    "{context}\n"
-    "\n"
-    "Quy tắc bắt buộc:\n"
-    "1. Chỉ trả lời dựa trên các đoạn tài liệu trên.\n"
-    "2. Mỗi khẳng định phải kèm trích dẫn [chunk_id] của đoạn đỡ cho nó.\n"
-    "3. Nếu tài liệu không đủ thông tin, nói rõ là không có thông tin — không suy diễn, "
-    "không bịa.\n"
-    "4. Trả lời bằng tiếng Việt, ngắn gọn, đi thẳng vào câu hỏi.\n"
-    "\n"
-    "Câu hỏi: {question}\n"
-)
-
 
 @dataclass
 class AgentResult:
@@ -77,7 +55,6 @@ class AgentResult:
     search_trace: list[dict[str, Any]] = field(default_factory=list)
     reasoning: str = ""  # nội dung "suy luận" của model (nếu provider trả về)
     low_confidence: bool = False
-    mode: str = "agent"
 
 
 def _build_search_trace(messages: list[BaseMessage]) -> list[dict[str, Any]]:
@@ -262,7 +239,6 @@ class RagAgent:
                     "max_score": fallback.max_score,
                 }],
                 low_confidence=True,
-                mode="agent",
             )
 
         tool_returned = _collect_tool_chunks(messages)
@@ -276,7 +252,6 @@ class RagAgent:
             # Chỉ cảnh báo khi THỰC SỰ đã tra cứu mà điểm thấp. Câu chào hỏi
             # không gọi tool thì không có gì để đánh giá → không flag.
             low_confidence=bool(trace) and max_score < self.cfg.min_score,
-            mode="agent",
         )
 
     # ---------- streaming (ChatGPT/Claude-style) ----------
@@ -410,7 +385,6 @@ class RagAgent:
             reasoning="".join(reasoning_parts),
             # Giống ask_agent: không gọi tool thì không có cơ sở để cảnh báo.
             low_confidence=bool(trace) and max_score < self.cfg.min_score,
-            mode="agent",
         )
         try:
             rt = get_current_run_tree()  # root run active while agent.stream runs
@@ -420,39 +394,3 @@ class RagAgent:
             logger.debug("trace enrichment skipped", exc_info=True)
         yield {"type": "_final", "result": result}
 
-    # ---------- stuff mode (fallback + ablation) ----------
-
-    def ask_stuff(self, question: str) -> AgentResult:
-        result = self.retriever.search(question)
-        context = "\n\n".join(
-            f"[{c['chunk_id']}] ({c['doc']} — {c['section']})\n{c['text']}"
-            for c in result.chunks
-        )
-        llm = self._make_llm()
-        prompt = STUFF_PROMPT_TEMPLATE.format(
-            context=context or "(không có tài liệu nào)", question=question
-        )
-        response = llm.invoke(prompt)
-        return AgentResult(
-            answer=str(response.content).strip(),
-            tool_returned={c["chunk_id"]: c for c in result.chunks},
-            search_trace=[{
-                "query": question,
-                "n_results": len(result.chunks),
-                "chunk_ids": [c["chunk_id"] for c in result.chunks],
-                "max_score": result.max_score,
-            }],
-            low_confidence=result.low_confidence,
-            mode="stuff",
-        )
-
-    def ask(
-        self,
-        question: str,
-        mode: str = "agent",
-        history: list[dict[str, str]] | None = None,
-        config: dict | None = None,
-    ) -> AgentResult:
-        if mode == "stuff":
-            return self.ask_stuff(question)
-        return self.ask_agent(question, history=history, config=config)

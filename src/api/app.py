@@ -39,7 +39,6 @@ async def lifespan(app: FastAPI):
         )
 
     worker.start()
-    app.state.services = services
     app.state.service = services
     app.state.worker = worker
     logger.info(

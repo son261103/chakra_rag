@@ -8,12 +8,12 @@ from observability.tracing import ls_client, submit_feedback, trace_metadata
 
 
 def test_trace_metadata_shape():
-    cfgdict = trace_metadata("conv-1", "agent", streamed=False)
+    cfgdict = trace_metadata("conv-1", streamed=False)
     assert cfgdict == {
-        "metadata": {"conversation_id": "conv-1", "mode": "agent", "streamed": False},
+        "metadata": {"conversation_id": "conv-1", "streamed": False},
         "tags": ["sync"],
     }
-    cfgdict2 = trace_metadata(None, "stuff", streamed=True)
+    cfgdict2 = trace_metadata(None, streamed=True)
     assert cfgdict2["metadata"]["conversation_id"] is None
     assert cfgdict2["tags"] == ["stream"]
 

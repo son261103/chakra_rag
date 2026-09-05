@@ -167,15 +167,13 @@ def ask(question, max_turns=4):
 - Citation verifier **chỉ chấp nhận chunk_id xuất hiện trong các ToolMessage** của phiên — agent bịa nguồn là bị phát hiện ngay.
 - `low_confidence` programmatic: max score trong mọi kết quả tool dưới ngưỡng → flag, bất kể LLM nói gì.
 - LLM trả lời thẳng không gọi tool → phát hiện được (messages không có tool_call); có thể ép lượt đầu bằng `tool_choice` nếu cần.
-- Model phải hỗ trợ function calling (GPT-4o-mini, Qwen, Claude...; model local nhỏ hỗ trợ thất thường) — giữ fallback `mode=stuff` để hệ thống chạy được với mọi model.
+- Model phải hỗ trợ function calling (GPT-4o-mini, Qwen, Claude...; model local nhỏ hỗ trợ thất thường) — đây là yêu cầu bắt buộc vì agent gọi tool là luồng trả lời duy nhất.
 
 **Vì sao hướng này đáng làm cho bài test:**
 - Agent tự reformulate query, tìm nhiều lượt, ghép thông tin từ nhiều chunk — lợi thế rõ với câu multi-hop.
 - Search trace là demo hay: UI cho người xem "coi" agent gọi tool tìm gì.
 - Thể hiện hiểu biết agentic RAG nhưng vẫn kiểm soát được: 1 tool, vòng lặp hữu hạn, verifier độc lập với LLM.
 - Đánh đổi: 2–4 LLM call mỗi câu thay vì 1 (chi phí/độ trễ) — ghi rõ trong README.
-
-**Giữ mode cổ điển để so sánh**: `ask(mode="stuff")` — retrieve một lần rồi nhét context vào prompt — dùng khi model không hỗ trợ function calling, và để so sánh chi phí/độ trễ với agent loop.
 
 ### 3.7 Citation verification — điểm khác biệt chính
 Sau khi LLM trả lời, chạy bước hậu kiểm:
@@ -193,7 +191,7 @@ POST /files            — upload file (multipart: .md, .txt, tùy chọn .pdf)
 GET  /files            — danh sách file: tên, status, số chunk, lỗi nếu có
 GET  /ingest/progress  — {status, files_total, files_done,
                           chunks_done, chunks_total, percent}
-POST /ask              — {question, top_k?, mode?} → {answer, citations[],
+POST /ask              — {question, top_k?} → {answer, citations[],
                           search_trace[], low_confidence, unsupported_claims[]}
 GET  /chunks/{id}      — xem chunk gốc (phục vụ việc kiểm tra trích dẫn)
 GET  /health
@@ -241,9 +239,7 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 | Vector store abstraction của LangChain | ❌ | sqlite-vec không phải store first-class; hybrid retrieval + RRF là phần tự viết — giữ `store.py`/`retrieve.py` thuần Python để kiểm soát và giải thích được. |
 | **LangSmith** | ✅ | Tracing qua env `LANGSMITH_API_KEY`/`LANGSMITH_TRACING`; `observability/tracing.py` cung cấp client factory lazy (warn-once khi thiếu key), metadata per-invocation và submit feedback scores (invalid_citations/unsupported_claims/low_confidence) lên root run. Không cấu hình → no-op an toàn. |
 
-**Tracing + feedback qua LangSmith** (`observability/tracing.py`): mỗi lần `ask`/`ask_stream` chạy trong một trace (metadata: conversation_id/mode/streamed, tags: sync/stream); `Retriever.search` và tool `search_docs` được decorate `@traceable` tạo child spans; cuối lượt service submit 3 feedback scores lên root run: `invalid_citations` (số cite sai), `unsupported_claims` (số claim thiếu đỡ), `low_confidence` (0/1). Không có `LANGSMITH_API_KEY`/`LANGSMITH_TRACING` thì toàn bộ là no-op an toàn (warn 1 lần nếu bật tracing mà thiếu key). Vẫn giữ `payload_json` trong SQLite cho UI replay lịch sử hội thoại.
-
-**Hạn chế đã biết:** mode `stuff` (fallback/ablation, đi qua `RagAgent.ask_stuff`) không thread trace config nên trace của nó thiếu metadata conversation/mode/streamed. Chỉ ảnh hưởng đường fallback/stuff; agent-mode (`ask_agent`/`stream_agent`) mang đủ metadata. Cố tình không wiring thêm code — chấp nhận vì stuff chỉ là fallback khi model không tool-call.
+**Tracing + feedback qua LangSmith** (`observability/tracing.py`): mỗi lần `ask`/`ask_stream` chạy trong một trace (metadata: conversation_id/streamed, tags: sync/stream); `Retriever.search` và tool `search_docs` được decorate `@traceable` tạo child spans; cuối lượt service submit 3 feedback scores lên root run: `invalid_citations` (số cite sai), `unsupported_claims` (số claim thiếu đỡ), `low_confidence` (0/1). Không có `LANGSMITH_API_KEY`/`LANGSMITH_TRACING` thì toàn bộ là no-op an toàn (warn 1 lần nếu bật tracing mà thiếu key). Vẫn giữ `payload_json` trong SQLite cho UI replay lịch sử hội thoại.
 
 **Lưu ý bắt buộc khi dùng framework cho bài test này:**
 - **Pin version** trong `requirements.txt` (họ LangChain đổi API liên tục) — ghi rõ version đã test.
@@ -336,7 +332,7 @@ Nguyên tắc: **phần lõi xong trước, UI làm sau cùng**. Nếu chậm ti
 - sqlite-vec cần load extension → dùng package `sqlite-vec` chính chủ (bundle wheel Linux x64), gói gọn trong `store.py`, có test smoke để phát hiện sớm.
 - FTS5 tokenizer không tách từ tiếng Việt → chấp nhận ở mức exact-term, ghi vào hạn chế; hướng mở rộng: tiền xử lý bằng `underthesea`.
 - LLM trả lời sai format JSON → parse có fallback (regex kéo JSON), retry 1 lần; fail nữa thì trả về raw + cờ lỗi.
-- Model không hỗ trợ function calling tốt (nhất là model local nhỏ) → giữ fallback `mode=stuff` (retrieve trước, nhét context vào prompt) để hệ thống vẫn chạy; mặc định dùng model có tool calling.
+- Model không hỗ trợ function calling tốt (nhất là model local nhỏ) → hệ thống yêu cầu model có tool-call (OpenAI-compatible: GPT-4o-mini, Qwen...); không có fallback khác.
 - Agent loop không hội tụ (gọi tool liên tục) → giới hạn `max_turns=4`, quá lượt thì ép chốt dựa trên bằng chứng tốt nhất đã thu thập, kèm cờ cảnh báo.
 
 ## 8. Nếu có thêm thời gian (ghi vào bài nộp)

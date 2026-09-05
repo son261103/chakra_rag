@@ -7,7 +7,7 @@
 | Chia nhỏ tài liệu | Heading + paragraph chunking (~300 token, overlap 50), giữ metadata nguồn |
 | Tạo embeddings | `paraphrase-multilingual-MiniLM-L12-v2` (local, 384d, L2-normalize) |
 | Truy xuất | Hybrid: vector (`sqlite-vec`) + lexical (FTS5) → Reciprocal Rank Fusion |
-| Trả lời + trích dẫn | Agent gọi tool `search_docs` (LangGraph) hoặc mode `stuff`; mỗi claim kèm `[chunk_id]` |
+| Trả lời + trích dẫn | Agent gọi tool `search_docs` (LangGraph); mỗi claim kèm `[chunk_id]` |
 | Hạn chế hallucination | Retrieval gate + prompt ràng buộc + citation verifier độc lập LLM |
 | Mã chạy được + hướng dẫn | README này + API / Web UI kèm tài liệu chi tiết |
 
@@ -18,7 +18,7 @@
 - **Python 3.11+** (khuyến nghị **3.12**; tránh 3.14 — torch/sentence-transformers có thể lỗi)
 - **uv** (khuyến nghị) hoặc `pip` + `venv`
 - Một **LLM API key** OpenAI-compatible (OpenAI / OpenRouter / Ollama local…)
-- Model chạy mode `agent` cần **hỗ trợ function calling** (vd. `gpt-4o-mini`, Qwen tool-call). Không có thì dùng `--mode stuff`
+- Model **hỗ trợ function calling** (vd. `gpt-4o-mini`, Qwen tool-call) — agent gọi tool `search_docs` để tra cứu
 - *(Tuỳ chọn UI)* Node.js 18+
 
 ---
@@ -134,7 +134,7 @@ câu hỏi
 
 **Vì sao hybrid + RRF?** Vector bắt nghĩa; FTS bắt số/tên riêng chính xác. RRF chỉ cần hạng, không cần chuẩn hóa cosine vs BM25-like.
 
-**Vì sao agent + mode stuff?** Agent tự reformulate / multi-hop; stuff rẻ hơn và dùng khi model không tool-call.
+**Vì sao agent?** Agent tự reformulate query / multi-hop, gọi `search_docs` nhiều lượt để gom đủ bằng chứng trước khi trả lời.
 
 **Framework boundary:** LangChain/LangGraph lo cơ chế (agent loop, tool schema, splitter). **Retrieval + RRF + citation verify là code tự viết** — phần thể hiện năng lực.
 
@@ -181,7 +181,7 @@ cd ui && npm install && npm run dev
 - Corpus demo tự soạn, tiếng Việt, quy mô nhỏ (vài chục chunk) — đủ chứng minh pipeline, không giả lập production scale.
 - LLM qua endpoint OpenAI-compatible; người chấm cần 1 key hoặc Ollama.
 - Đầu vào chính cho take-home: `.md` / `.txt` sạch (không OCR PDF scan / bảng phức tạp trong phạm vi 48h).
-- Mode `agent` cần model function-calling; không thì `--mode stuff`.
+- Cần model hỗ trợ function calling (agent gọi tool `search_docs`).
 - `data/docs` là corpus mẫu tham khảo. UI live index = những gì đã có trong DB sau upload của người dùng.
 - Embedding chạy local CPU; lần đầu tải model chậm hơn.
 

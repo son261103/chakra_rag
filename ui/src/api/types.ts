@@ -37,7 +37,6 @@ export interface SearchTraceEntry {
 export interface AskResponse {
   question: string;
   answer: string;
-  mode: "agent" | "stuff";
   citations: Citation[];
   invalid_citations: string[];
   unsupported_claims: string[];

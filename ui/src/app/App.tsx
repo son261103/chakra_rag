@@ -57,7 +57,6 @@ function messagesToHistory(
         ({
           question: m.content,
           answer: next.content,
-          mode: "agent",
           citations: [],
           invalid_citations: [],
           unsupported_claims: [],

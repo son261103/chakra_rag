@@ -9,10 +9,6 @@ Các domain service chuyên biệt:
 
 from __future__ import annotations
 
-import logging
-from collections.abc import Iterator
-from typing import Any
-
 from config import Config, get_config
 from core.agent import RagAgent
 from core.embedding import Embedder
@@ -24,8 +20,6 @@ from service.conversation_service import ConversationService
 from service.file_service import FileService
 from service.integration_service import IntegrationService
 from storage.store import Store
-
-logger = logging.getLogger(__name__)
 
 
 class ServiceContainer:
@@ -74,52 +68,9 @@ class ServiceContainer:
         self.worker = worker
         self.files.worker = worker
 
-    # ---------- Delegation methods (backward compatibility) ----------
-
-    def ask(
-        self,
-        question: str,
-        mode: str = "agent",
-        top_k: int | None = None,
-        conversation_id: str | None = None,
-    ) -> dict[str, Any]:
-        self.chat.agent = self.agent
-        self.chat.retriever = self.retriever
-        return self.chat.ask(question, mode=mode, top_k=top_k, conversation_id=conversation_id)
-
-    def ask_stream(
-        self,
-        question: str,
-        mode: str = "agent",
-        top_k: int | None = None,
-        conversation_id: str | None = None,
-    ) -> Iterator[dict[str, Any]]:
-        self.chat.agent = self.agent
-        self.chat.retriever = self.retriever
-        return self.chat.ask_stream(
-            question, mode=mode, top_k=top_k, conversation_id=conversation_id
-        )
-
-    def get_chunk(self, chunk_id: str) -> dict[str, Any] | None:
-        return self.chat.get_chunk(chunk_id)
-
-    def get_active_integration_info(self) -> dict[str, Any]:
-        return self.integrations.get_active_integration_info()
-
     def reload_agent(self) -> None:
         self.agent.invalidate_agent()
-
-    def test_llm_connection(
-        self,
-        model: str,
-        base_url: str,
-        api_key: str,
-    ) -> dict[str, Any]:
-        return self.integrations.test_connection(model, base_url, api_key=api_key)
 
     def close(self) -> None:
         self.store.close()
 
-
-# Alias hỗ trợ backward compatibility
-RagService = ServiceContainer

@@ -61,11 +61,7 @@ export default function ChatMessage({ entry, onCitationClick }: Props) {
 
           <div className="message-meta">
             <span>
-              {response.mode === "agent"
-                ? nTraces > 0
-                  ? `Agent · ${nTraces} lượt tra cứu`
-                  : "Agent"
-                : "Retrieve trực tiếp"}
+              {nTraces > 0 ? `Agent · ${nTraces} lượt tra cứu` : "Agent"}
               {response.latency_ms > 0 && ` · ${latencyDisplay}`}
             </span>
 

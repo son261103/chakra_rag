@@ -16,7 +16,6 @@ router = APIRouter(tags=["chat"])
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1)
-    mode: str = Field(default="agent", pattern="^(agent|stuff)$")
     top_k: int | None = Field(default=None, ge=1, le=20)
     conversation_id: str | None = None
 
@@ -32,7 +31,6 @@ class ChunkRef(BaseModel):
 class AskResponseModel(BaseModel):
     question: str
     answer: str
-    mode: str
     citations: list[ChunkRef]
     invalid_citations: list[str]
     unsupported_claims: list[str]
@@ -53,7 +51,6 @@ def ask(req: AskRequest, request: Request) -> AskResponseModel:
         raise HTTPException(404, "Không tìm thấy hội thoại")
     return service.chat.ask(
         req.question,
-        mode=req.mode,
         top_k=req.top_k,
         conversation_id=req.conversation_id,
     )
@@ -76,7 +73,6 @@ def ask_stream(req: AskRequest, request: Request):
     def event_stream():
         for event in service.chat.ask_stream(
             req.question,
-            mode=req.mode,
             top_k=req.top_k,
             conversation_id=req.conversation_id,
         ):

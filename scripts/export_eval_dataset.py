@@ -34,7 +34,7 @@ def export_eval_dataset(
         {
             "inputs": r.inputs,
             "outputs": r.outputs,
-            "metadata": {"mode": (r.metadata or {}).get("mode"), "source_run_id": r.id},
+            "metadata": {"source_run_id": r.id},
         }
         for r in usable
     ]

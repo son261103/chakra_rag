@@ -53,14 +53,11 @@ def ls_client() -> Any | None:
         return None
 
 
-def trace_metadata(
-    conversation_id: str | None, mode: str, *, streamed: bool
-) -> dict[str, Any]:
+def trace_metadata(conversation_id: str | None, *, streamed: bool) -> dict[str, Any]:
     """Config dict cho agent.invoke/stream: metadata + tags của cả trace."""
     return {
         "metadata": {
             "conversation_id": conversation_id,
-            "mode": mode,
             "streamed": streamed,
         },
         "tags": ["stream" if streamed else "sync"],

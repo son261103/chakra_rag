@@ -41,7 +41,6 @@ class ChatService:
         top_k: int | None,
         conversation_id: str | None,
         *,
-        mode: str,
         log_label: str,
     ) -> list[dict[str, str]]:
         """Prelude chung cho ask/ask_stream: clamp top_k + lấy history + log start."""
@@ -49,9 +48,8 @@ class ChatService:
             self.retriever.top_k = top_k
         history = self.conversations.list_history_for_llm(conversation_id)
         logger.info(
-            "%s start mode=%s conv=%s history_turns=%d q=%r",
+            "%s start conv=%s history_turns=%d q=%r",
             log_label,
-            mode,
             conversation_id,
             len(history) // 2,
             question[:120],
@@ -69,7 +67,6 @@ class ChatService:
         return {
             "question": question,
             "answer": verified.answer,
-            "mode": result.mode,
             "citations": verified.citations,
             "invalid_citations": verified.invalid_citations,
             "unsupported_claims": verified.unsupported_claims,
@@ -99,18 +96,15 @@ class ChatService:
     def ask(
         self,
         question: str,
-        mode: str = "agent",
         top_k: int | None = None,
         conversation_id: str | None = None,
     ) -> dict[str, Any]:
         """Hỏi → agent loop → verify citations → log → trả về payload chuẩn."""
-        history = self._prepare_question(
-            question, top_k, conversation_id, mode=mode, log_label="ask"
-        )
+        history = self._prepare_question(question, top_k, conversation_id, log_label="ask")
         t0 = timed()
-        agent_cfg = trace_metadata(conversation_id, mode, streamed=False)
-        agent_result: AgentResult = self.agent.ask(
-            question, mode=mode, history=history, config=agent_cfg
+        agent_cfg = trace_metadata(conversation_id, streamed=False)
+        agent_result: AgentResult = self.agent.ask_agent(
+            question, history=history, config=agent_cfg
         )
         verified: VerifiedAnswer = verify_answer(
             agent_result.answer,
@@ -124,8 +118,7 @@ class ChatService:
         self.conversations.persist_turn(conversation_id, question, payload)
         self._submit_quality_feedback(verified)
         logger.info(
-            "ask done mode=%s latency_ms=%d tools=%d citations=%d low_conf=%s",
-            agent_result.mode,
+            "ask done latency_ms=%d tools=%d citations=%d low_conf=%s",
             latency,
             len(agent_result.search_trace),
             len(verified.citations),
@@ -136,20 +129,17 @@ class ChatService:
     def ask_stream(
         self,
         question: str,
-        mode: str = "agent",
         top_k: int | None = None,
         conversation_id: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         """Streaming version của ask(): pass-through events của agent và verify cuối cùng."""
         history = self._prepare_question(
-            question, top_k, conversation_id, mode=mode, log_label="ask_stream"
+            question, top_k, conversation_id, log_label="ask_stream"
         )
         t0 = timed()
-        agent_cfg = trace_metadata(conversation_id, mode, streamed=True)
+        agent_cfg = trace_metadata(conversation_id, streamed=True)
         final: AgentResult | None = None
-        for event in self.agent.stream_agent(
-            question, history=history, config=agent_cfg
-        ):
+        for event in self.agent.stream_agent(question, history=history, config=agent_cfg):
             if event["type"] == "_final":
                 final = event["result"]
                 continue
@@ -173,8 +163,7 @@ class ChatService:
         self.conversations.persist_turn(conversation_id, question, payload)
         self._submit_quality_feedback(verified)
         logger.info(
-            "ask_stream done mode=%s latency_ms=%d tools=%d citations=%d low_conf=%s",
-            final.mode,
+            "ask_stream done latency_ms=%d tools=%d citations=%d low_conf=%s",
             latency,
             len(final.search_trace),
             len(verified.citations),

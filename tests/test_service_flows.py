@@ -7,11 +7,10 @@ import pytest
 
 from config import Config
 
-# 11-key payload contract (ask() return và event "done" của ask_stream)
+# 10-key payload contract (ask() return và event "done" của ask_stream)
 PAYLOAD_KEYS = {
     "question",
     "answer",
-    "mode",
     "citations",
     "invalid_citations",
     "unsupported_claims",
@@ -46,12 +45,11 @@ def test_ask_happy_path_stores_turn(service):
     fr.search_trace = [{"query": "q", "n_results": 1, "chunk_ids": ["c1"], "max_score": 0.8}]  # noqa: E501
     fr.reasoning = ""
     fr.low_confidence = False
-    fr.mode = "agent"
 
     cid = service.store.create_conversation()["id"]
-    with patch.object(service, "agent") as ag:
-        ag.ask.return_value = fr
-        payload = service.ask("hỏi gì đó", conversation_id=cid)
+    with patch.object(service.chat, "agent") as ag:
+        ag.ask_agent.return_value = fr
+        payload = service.chat.ask("hỏi gì đó", conversation_id=cid)
     assert payload["low_confidence"] is False
     msgs = service.store.list_messages(cid)
     assert [m["role"] for m in msgs] == ["user", "assistant"]
@@ -65,22 +63,21 @@ def test_stream_done_event_validated(service):
     fr.search_trace = []
     fr.reasoning = ""
     fr.low_confidence = True
-    fr.mode = "agent"
 
     def gen():
         yield {"type": "thinking", "delta": "hm"}
         yield {"type": "_final", "result": fr}
 
-    with patch.object(service, "agent") as ag:
+    with patch.object(service.chat, "agent") as ag:
         ag.stream_agent.return_value = iter(gen())
-        events = list(service.ask_stream("x"))
+        events = list(service.chat.ask_stream("x"))
     assert events[0]["type"] == "thinking"
     assert events[-1]["type"] == "done"
     assert events[-1]["low_confidence"] is True
 
 
 def test_ask_payload_exact_key_contract(service):
-    """Khóa payload của ask() phải đúng 11 key — không thừa, không thiếu."""
+    """Khóa payload của ask() phải đúng 10 key — không thừa, không thiếu."""
     fr = MagicMock()
     fr.answer = "trả lời [c1]"
     fr.tool_returned = {
@@ -89,30 +86,28 @@ def test_ask_payload_exact_key_contract(service):
     fr.search_trace = []
     fr.reasoning = ""
     fr.low_confidence = False
-    fr.mode = "agent"
 
-    with patch.object(service, "agent") as ag:
-        ag.ask.return_value = fr
-        payload = service.ask("hỏi gì đó")
+    with patch.object(service.chat, "agent") as ag:
+        ag.ask_agent.return_value = fr
+        payload = service.chat.ask("hỏi gì đó")
     assert set(payload.keys()) == PAYLOAD_KEYS
 
 
 def test_stream_done_payload_exact_key_contract(service):
-    """Event "done" của ask_stream mang đúng 11 key payload (+ type)."""
+    """Event "done" của ask_stream mang đúng 10 key payload (+ type)."""
     fr = MagicMock()
     fr.answer = "ok"
     fr.tool_returned = {}
     fr.search_trace = []
     fr.reasoning = ""
     fr.low_confidence = False
-    fr.mode = "agent"
 
     def gen():
         yield {"type": "_final", "result": fr}
 
-    with patch.object(service, "agent") as ag:
+    with patch.object(service.chat, "agent") as ag:
         ag.stream_agent.return_value = iter(gen())
-        events = list(service.ask_stream("x"))
+        events = list(service.chat.ask_stream("x"))
     assert events[-1]["type"] == "done"
     assert set(events[-1].keys()) - {"type"} == PAYLOAD_KEYS
 
@@ -133,12 +128,11 @@ def test_ask_feedback_score_values(service):
     fr.search_trace = []
     fr.reasoning = ""
     fr.low_confidence = True
-    fr.mode = "agent"
 
-    with patch.object(service, "agent") as ag:
-        ag.ask.return_value = fr
+    with patch.object(service.chat, "agent") as ag:
+        ag.ask_agent.return_value = fr
         with patch("service.container.submit_feedback") as fb:
-            service.ask("hỏi gì đó")
+            service.chat.ask("hỏi gì đó")
     scores = {c.args[0]: c.args[1] for c in fb.call_args_list}
     assert scores["invalid_citations"] == 1  # [fake1] không nằm trong tool_returned
     assert scores["unsupported_claims"] == 1  # claim không được chunk đỡ
