@@ -184,6 +184,7 @@ class RagAgent:
             self._agent = create_react_agent(llm, [search_docs], prompt=SYSTEM_PROMPT)
             self._current_integration_fingerprint = fingerprint
         return self._agent
+        
     def _history_messages(
         self, history: list[dict[str, str]] | None
     ) -> list[tuple[str, str]]:
