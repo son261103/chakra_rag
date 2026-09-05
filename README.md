@@ -67,14 +67,14 @@ Lần đầu chạy embedding model sẽ **tải về máy** (cần mạng). DB 
 **Test không cần LLM:**
 
 ```bash
-PYTHONPATH=src python -m pytest tests/ -v
+uv run pytest tests/ -v        # hoặc (pip-only): PYTHONPATH=src python -m pytest tests/ -v
 ```
 
 Test các tầng tự viết: chunking, store (sqlite-vec + FTS5), retrieve (RRF), citation verify, ingest.
 
 ---
 
-## 5. Ví dụ câu hỏi demo (sau `ingest`)
+## 5. Ví dụ câu hỏi demo (sau khi upload corpus qua Web UI)
 
 Corpus seed (`data/docs/`):
 
@@ -96,7 +96,7 @@ Gợi ý 5 câu (đúng tinh thần đề 3–5 câu + trích dẫn):
 5. *Công ty có chính sách hỗ trợ mua laptop cá nhân không?*  
    → unanswerable: từ chối / nói không có trong tài liệu.
 
-Mỗi câu trả lời in kèm **Nguồn** dạng `[chunk_id] doc — section`. Có thể thêm `--json` để xem full payload (citations, search_trace, low_confidence, unsupported_claims).
+Mỗi câu trả lời in kèm **Nguồn** dạng `[chunk_id] doc — section`. Payload đầy đủ (citations, search_trace, low_confidence, unsupported_claims) hiển thị trong Web UI và trong response của `POST /ask`.
 
 ---
 
@@ -125,8 +125,8 @@ data/docs/*.md
 
 câu hỏi
     → agent (LangGraph create_react_agent, max 4 lượt)
-         tool: search_docs(query, top_k)
-         hybrid: vector top-k + FTS5 top-k → RRF → threshold
+         tools: search_docs (chính) + read_chunk + list_documents
+         search_docs: hybrid vector top-k + FTS5 top-k → RRF → threshold
     → LLM trả lời + [chunk_id]
     → citation verifier
     → {answer, citations, search_trace, low_confidence, unsupported_claims}
@@ -144,8 +144,9 @@ Cấu trúc code (layered backend):
 
 ```
 src/
+  agent/         # lớp LLM orchestration: agent (vòng lặp LangGraph), llm, tools/ (mỗi tool một file)
   api/           # fastapi app + modular routers (chat, files, conversations, integrations, health)
-  core/          # chunking, embedding, retrieval, llm, agent, verification, security (KEK/DEK)
+  core/          # domain RAG: chunking, embedding, retrieval, verification, security (KEK/DEK)
   storage/       # SQLite store (chunks, vec0, fts5, files, conversations, llm_integrations)
   ingestion/     # worker ingest
   service/       # domain services (chat, conversation, file, integration) + container
@@ -192,7 +193,7 @@ cd ui && npm install && npm run dev
 - Reranker cross-encoder
 - Support check nâng NLI / LLM-judge từng claim
 - Semantic chunking + parent-document retrieval
-- Agent đa tool: `list_documents`, `read_chunk`
+- Tool tìm kiếm theo tài liệu: thêm param `doc` vào `search_docs` thay vì tool riêng
 - Retry/backoff khi LLM gateway flaky
 
 ---
@@ -203,13 +204,23 @@ cd ui && npm install && npm run dev
 chakra_rag/
 ├── README.md                 # file này
 ├── DESIGN.md                 # quyết định thiết kế chi tiết
-├── requirements.txt          # dependency pin
+├── pyproject.toml            # dependency + cấu hình build (uv / hatchling)
+├── requirements.txt          # dependency pin (tham khảo cho pip)
 ├── .env.example
-├── src/chakra_rag/           # backend
-├── tests/test_smoke.py
+├── src/                      # backend — layout flat, module import là `api:app`
+│   ├── agent/                # LLM orchestration: agent, llm, tools/
+│   ├── api/                  # FastAPI app + routes/
+│   ├── core/                 # domain RAG: chunking, embedding, retrieval, verification, security
+│   ├── storage/              # SQLite store
+│   ├── ingestion/            # worker ingest
+│   ├── service/              # domain services + container
+│   └── observability/        # LangSmith tracing
+├── tests/
 ├── data/
 │   ├── docs/                 # corpus tài liệu mẫu tham khảo
 │   ├── uploads/              # file upload UI (tham chiếu)
 │   └── cau_hoi_mau.txt       # gợi ý câu hỏi demo UI (không ingest)
 └── ui/                       # frontend tuỳ chọn
 ```
+
+> Lệnh khởi chạy backend dùng module flat: `uv run uvicorn api:app --reload --port 8000` (cấu trúc `chakra_rag.*` cũ không còn từ khi chuyển sang layout flat).
