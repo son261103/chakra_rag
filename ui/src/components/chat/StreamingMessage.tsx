@@ -1,5 +1,5 @@
 import { Loader2, Sparkles } from "lucide-react";
-import type { AskResponse, SearchTraceEntry } from "../../api/types";
+import type { AskResponse, ToolTraceEntry } from "../../api/types";
 import ThinkingBlock from "./ThinkingBlock";
 import ToolTraceGroup from "./ToolTraceGroup";
 import MarkdownAnswer from "./MarkdownAnswer";
@@ -11,7 +11,7 @@ export interface StreamingState {
   reasoning: string;
   thinkingActive: boolean;
   thinkingDurationMs: number | null;
-  toolCalls: { trace: SearchTraceEntry; running: boolean }[];
+  toolCalls: { trace: ToolTraceEntry; running: boolean }[];
   answer: string;
   error: string | null;
   /** Payload hoàn chỉnh khi nhận event "done" */

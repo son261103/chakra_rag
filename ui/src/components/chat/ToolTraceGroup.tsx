@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { ChevronRight, Loader2, Search } from "lucide-react";
-import type { SearchTraceEntry } from "../../api/types";
+import type { ToolTraceEntry } from "../../api/types";
 import ToolCallBlock from "./ToolCallBlock";
 
 interface ToolItem {
-  trace: SearchTraceEntry;
+  trace: ToolTraceEntry;
   running?: boolean;
 }
 
@@ -15,6 +15,12 @@ interface Props {
   streaming?: boolean;
 }
 
+/** Số kết quả tóm tắt: chỉ search có n_results, read/list trả 0 để không đếm chung. */
+function nResultsOf(trace: ToolTraceEntry): number {
+  if (trace.name === "read_chunk" || trace.name === "list_documents") return 0;
+  return trace.n_results ?? 0;
+}
+
 export default function ToolTraceGroup({ tools, onCitationClick, streaming = false }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -23,7 +29,7 @@ export default function ToolTraceGroup({ tools, onCitationClick, streaming = fal
   // Khi đang streaming câu hỏi và các tool chưa chốt xong: giữ trạng thái loading liên tục,
   // không bật-tắt spinner giật cục giữa các lượt gọi tool
   const anyRunning = streaming || tools.some((t) => t.running);
-  const totalResults = tools.reduce((sum, t) => sum + (t.trace?.n_results || 0), 0);
+  const totalResults = tools.reduce((sum, t) => sum + nResultsOf(t.trace), 0);
 
   return (
     <div className={`collapsible-info-block ${open ? "open" : ""} ${anyRunning ? "running" : ""}`}>

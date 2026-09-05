@@ -6,6 +6,7 @@ verify (citation check), ingest. Đây là phần nghiệp vụ chấm điểm n
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -14,6 +15,9 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from langchain_core.messages import AIMessage, ToolMessage  # noqa: E402
+
+from agent.agent import _build_tool_trace, _collect_tool_chunks  # noqa: E402
 from agent.tools import ToolDeps, build_tools  # noqa: E402
 from config import get_config  # noqa: E402
 from core.chunking import chunk_markdown  # noqa: E402
@@ -136,14 +140,79 @@ def test_retriever_returns_result_with_confidence(store, embedder):
 
 # ---------- agent tools ----------
 
-def test_build_tools_registry_wires_search_docs(store, embedder):
+def test_build_tools_registry_wires_all_tools(store, embedder):
     """build_tools tự nhận mọi tool đăng ký trong agent/tools (registry)."""
     retriever = Retriever(store, embedder, top_k=3, min_score=0.25)
-    tools = build_tools(ToolDeps(retriever=retriever))
+    tools = build_tools(ToolDeps(retriever=retriever, store=store))
     by_name = {t.name: t for t in tools}
-    assert "search_docs" in by_name
+    assert {"search_docs", "read_chunk", "list_documents"} <= set(by_name)
     # `config` xuất hiện trong schema do @traceable wrap thêm param (hành vi có sẵn).
     assert {"query", "top_k"} <= set(by_name["search_docs"].args.keys())
+
+
+def test_read_chunk_tool_returns_full_chunk(store, embedder):
+    vec = embedder.embed_one("nội dung mẫu")
+    store.insert_chunk("doc#a#0", "doc.md", "a", "Nội dung đầy đủ của đoạn.", 0, 26, vec)
+    retriever = Retriever(store, embedder, top_k=3, min_score=0.25)
+    tools = build_tools(ToolDeps(retriever=retriever, store=store))
+    read_chunk = next(t for t in tools if t.name == "read_chunk")
+
+    payload = json.loads(read_chunk.invoke({"chunk_id": "doc#a#0"}))
+    assert payload["chunk_id"] == "doc#a#0"
+    assert payload["doc"] == "doc.md"
+    assert "Nội dung đầy đủ" in payload["text"]
+
+    missing = json.loads(read_chunk.invoke({"chunk_id": "khong#ton#tai"}))
+    assert "error" in missing
+
+
+def test_list_documents_tool_lists_files(store, embedder):
+    store.upsert_file("f1", "cv.md", source="seed", status="ready", chunks_total=3)
+    retriever = Retriever(store, embedder, top_k=3, min_score=0.25)
+    tools = build_tools(ToolDeps(retriever=retriever, store=store))
+    list_documents = next(t for t in tools if t.name == "list_documents")
+
+    docs = json.loads(list_documents.invoke({}))
+    assert {"doc": "cv.md", "status": "ready", "chunks_total": 3, "chunks_done": 0} in docs
+
+
+def test_tool_trace_and_evidence_multi_tool():
+    """Trace nhận diện đủ 3 loại tool; bằng chứng citation chỉ gồm chunk thật."""
+    search_results = [{"chunk_id": "s#0", "doc": "a.md", "section": "a", "score": 0.7, "text": "x"}]
+    read_chunk = {"chunk_id": "s#0", "doc": "a.md", "section": "a", "text": "x"}
+    docs = [{"doc": "a.md", "status": "ready", "chunks_total": 1, "chunks_done": 1}]
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "search_docs", "args": {"query": "phép"}, "id": "c1", "type": "tool_call"}
+            ],
+        ),
+        ToolMessage(content=json.dumps(search_results), tool_call_id="c1"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "read_chunk", "args": {"chunk_id": "s#0"}, "id": "c2", "type": "tool_call"}
+            ],
+        ),
+        ToolMessage(content=json.dumps(read_chunk), tool_call_id="c2"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "list_documents", "args": {}, "id": "c3", "type": "tool_call"}
+            ],
+        ),
+        ToolMessage(content=json.dumps(docs), tool_call_id="c3"),
+    ]
+
+    trace = _build_tool_trace(messages)
+    assert [t["name"] for t in trace] == ["search_docs", "read_chunk", "list_documents"]
+    assert trace[0]["query"] == "phép" and trace[0]["max_score"] == 0.7
+    assert trace[1]["found"] is True and trace[1]["doc"] == "a.md"
+    assert trace[2]["n_docs"] == 1
+
+    evidence = _collect_tool_chunks(messages)
+    assert set(evidence) == {"s#0"}  # list_documents không thành bằng chứng citation
 
 
 # ---------- verify ----------

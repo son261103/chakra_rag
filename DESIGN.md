@@ -117,7 +117,16 @@ Vì sao hợp với bài này:
   `score(d) = Σ 1/(60 + rank_i(d))`
 - Lấy top 4–6 sau fusion; **threshold gate**: nếu score/độ phủ quá thấp → đánh dấu `low_confidence` và câu trả lời mặc định là từ chối một phần/toàn bộ.
 
-### 3.6 Generation: agent loop bằng LangGraph — LLM tự gọi tool `search_docs`
+### 3.6 Generation: agent loop bằng LangGraph — LLM tự gọi các tool
+
+Bộ tool (định nghĩa trong `src/agent/tools/`, mỗi tool một file, tự đăng ký qua
+`@register_tool`; agent nhận đủ tool qua `build_tools()` — thêm tool mới không
+phải sửa agent):
+
+- `search_docs(query, top_k)` — tool chính: hybrid retrieval (vector + FTS5 + RRF + threshold).
+- `read_chunk(chunk_id)` — đọc đầy đủ một đoạn theo id lấy từ kết quả search.
+- `list_documents()` — liệt kê tài liệu đang có; giúp agent nói chính xác
+  "tài liệu không có thông tin này" thay vì đoán mò khi search rỗng.
 
 **Mental model quan trọng nhất**: tool chỉ là một JSON schema khai báo với LLM. LLM **không tự chạy gì cả** — nó chỉ sinh ra yêu cầu có cấu trúc `{"name": "search_docs", "arguments": {...}}`; **code của mình** thực thi yêu cầu đó (chạy hybrid retrieval) rồi trả kết quả về cho LLM dưới dạng message `role="tool"`. Lặp lại cho đến khi LLM thôi gọi tool và chốt câu trả lời. LangGraph (`create_react_agent`) đóng gói đúng vòng lặp này — phần nghiệp vụ (retrieval, verifier) vẫn là code tự viết.
 
@@ -147,7 +156,7 @@ def search_docs(query: str, top_k: int = 5) -> str:
     return json.dumps(chunks, ensure_ascii=False)
 
 llm = ChatOpenAI(model=cfg.model, base_url=cfg.base_url, temperature=0)
-agent = create_react_agent(llm, [search_docs], prompt=SYSTEM_PROMPT)
+agent = create_react_agent(llm, build_tools(deps), prompt=SYSTEM_PROMPT)
 
 def ask(question, max_turns=4):
     result = agent.invoke(
@@ -156,7 +165,7 @@ def ask(question, max_turns=4):
     messages = result["messages"]
     answer = messages[-1].content
     tool_returned = extract_chunks_from_tool_messages(messages)  # bằng chứng hợp lệ
-    trace = build_search_trace(messages)                          # cho UI
+    trace = build_tool_trace(messages)                            # cho UI, theo loại tool
     return finalize(answer, tool_returned, trace)   # citation verification ở đây
 ```
 
@@ -164,15 +173,15 @@ def ask(question, max_turns=4):
 
 **Guardrails (bắt buộc — agent thêm failure mode mới):**
 - `recursion_limit = 2*max_turns + 1`: chống loop; quá lượt thì ép chốt bằng bằng chứng tốt nhất đã thu thập (parse từ messages), kèm cờ cảnh báo.
-- Citation verifier **chỉ chấp nhận chunk_id xuất hiện trong các ToolMessage** của phiên — agent bịa nguồn là bị phát hiện ngay.
-- `low_confidence` programmatic: max score trong mọi kết quả tool dưới ngưỡng → flag, bất kể LLM nói gì.
+- Citation verifier **chỉ chấp nhận chunk_id xuất hiện trong các ToolMessage** của phiên — agent bịa nguồn là bị phát hiện ngay. Bằng chứng gom từ mọi tool trả về chunk (search trả list, read_chunk trả dict đơn); tool không trả chunk (list_documents) tự động bị loại.
+- `low_confidence` programmatic: max score **chỉ trong các lượt search** dưới ngưỡng → flag, bất kể LLM nói gì (read/list không có score cosine, không được kéo flag oan).
 - LLM trả lời thẳng không gọi tool → phát hiện được (messages không có tool_call); có thể ép lượt đầu bằng `tool_choice` nếu cần.
 - Model phải hỗ trợ function calling (GPT-4o-mini, Qwen, Claude...; model local nhỏ hỗ trợ thất thường) — đây là yêu cầu bắt buộc vì agent gọi tool là luồng trả lời duy nhất.
 
 **Vì sao hướng này đáng làm cho bài test:**
 - Agent tự reformulate query, tìm nhiều lượt, ghép thông tin từ nhiều chunk — lợi thế rõ với câu multi-hop.
 - Search trace là demo hay: UI cho người xem "coi" agent gọi tool tìm gì.
-- Thể hiện hiểu biết agentic RAG nhưng vẫn kiểm soát được: 1 tool, vòng lặp hữu hạn, verifier độc lập với LLM.
+- Thể hiện hiểu biết agentic RAG nhưng vẫn kiểm soát được: 3 tool (search/read/list), vòng lặp hữu hạn, verifier độc lập với LLM.
 - Đánh đổi: 2–4 LLM call mỗi câu thay vì 1 (chi phí/độ trễ) — ghi rõ trong README.
 
 ### 3.7 Citation verification — điểm khác biệt chính
@@ -342,5 +351,5 @@ Nguyên tắc: **phần lõi xong trước, UI làm sau cùng**. Nếu chậm ti
 - Reranker cross-encoder (đặc biệt hiệu quả với corpus nhỏ).
 - Support check nâng cấp: NLI model hoặc LLM-judge từng claim thay vì n-gram overlap.
 - Semantic chunking + chunk hierarchy (parent-document retrieval).
-- Agent đa tool: thêm `list_documents`, `read_chunk` bên cạnh `search_docs` để agent tự điều hướng khi corpus lớn (hiện tại 1 tool là đủ cho corpus nhỏ) — LangGraph mở rộng việc này tự nhiên.
+- Agent đa tool: đã triển khai `search_docs` + `read_chunk` + `list_documents` (registry trong `agent/tools/`); có thể mở rộng tiếp `search_in_doc(doc, query)` bằng cách thêm file tool mới.
 - LangSmith: tracing + feedback scores đã tích hợp sẵn (bật qua `LANGSMITH_TRACING`/`LANGSMITH_API_KEY`); có thể mở rộng thêm eval dataset từ production traces (scripts/export_eval_dataset.py) và so sánh prompt tập trung khi làm việc theo team.

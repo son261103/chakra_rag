@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from langchain_core.tools import BaseTool
 
-from agent.tools import search_docs  # noqa: F401  (side-effect: đăng ký tool)
+from agent.tools import (
+    list_documents,  # noqa: F401  (side-effect: đăng ký tool)
+    read_chunk,  # noqa: F401  (side-effect: đăng ký tool)
+    search_docs,  # noqa: F401  (side-effect: đăng ký tool)
+)
 from agent.tools.registry import TOOL_FACTORIES, ToolDeps
 
 __all__ = ["ToolDeps", "build_tools"]

@@ -7,7 +7,7 @@ import {
   getConversation,
   listConversations,
 } from "../api/client";
-import type { AskResponse, ConversationSummary, FileEntry } from "../api/types";
+import type { AskResponse, ConversationSummary, FileEntry, StreamEvent, ToolTraceEntry } from "../api/types";
 import { useIngestStatus } from "../hooks/useIngestStatus";
 import Sidebar from "../components/sidebar/Sidebar";
 import ChatMessage from "../components/chat/ChatMessage";
@@ -42,6 +42,24 @@ const EMPTY_STREAM = (question: string): StreamingState => ({
   answer: "",
   error: null,
 });
+
+/** Placeholder trace khi tool vừa được gọi (chưa có kết quả) — shape theo loại tool. */
+function emptyToolEntry(name: string): ToolTraceEntry {
+  switch (name) {
+    case "read_chunk":
+      return { name: "read_chunk", chunk_id: "", doc: "", section: "", found: false };
+    case "list_documents":
+      return { name: "list_documents", n_docs: 0, docs: [] };
+    default:
+      return { name: "search_docs", query: "", n_results: 0, chunk_ids: [], max_score: 0 };
+  }
+}
+
+/** Đổi tool_call event thành entry trace (bỏ type/index điều khiển). */
+function toolEntryFromEvent(ev: Extract<StreamEvent, { type: "tool_call" }>): ToolTraceEntry {
+  const { type: _type, index: _index, ...entry } = ev;
+  return entry as ToolTraceEntry;
+}
 
 function messagesToHistory(
   messages: { role: string; content: string; payload?: AskResponse | null }[]
@@ -238,10 +256,7 @@ export default function App() {
                 s
                   ? {
                       ...s,
-                      toolCalls: [
-                        ...s.toolCalls,
-                        { trace: { query: "", n_results: 0, chunk_ids: [], max_score: 0 }, running: true },
-                      ],
+                      toolCalls: [...s.toolCalls, { trace: emptyToolEntry(ev.name), running: true }],
                     }
                   : s
               );
@@ -252,15 +267,7 @@ export default function App() {
                 const calls = [...s.toolCalls];
                 const idx = Math.min(ev.index - 1, calls.length - 1);
                 if (idx >= 0) {
-                  calls[idx] = {
-                    trace: {
-                      query: ev.query,
-                      n_results: ev.n_results,
-                      chunk_ids: ev.chunk_ids,
-                      max_score: ev.max_score,
-                    },
-                    running: false,
-                  };
+                  calls[idx] = { trace: toolEntryFromEvent(ev), running: false };
                 }
                 return { ...s, toolCalls: calls };
               });

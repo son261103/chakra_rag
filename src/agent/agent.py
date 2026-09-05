@@ -1,4 +1,4 @@
-"""Agent RAG dùng LangGraph: LLM tự gọi tool (mặc định `search_docs`) để lấy dữ liệu.
+"""Agent RAG dùng LangGraph: LLM tự gọi các tool (search_docs, read_chunk, list_documents).
 
 Tool định nghĩa trong agent/tools/ (registry @register_tool) — thêm tool mới
 chỉ cần tạo file ở đó, agent tự nhận qua build_tools().
@@ -30,20 +30,28 @@ from core.security import decrypt_integration_key
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
-    "Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu nội bộ được cung cấp qua công cụ "
-    "search_docs.\n"
+    "Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu nội bộ, tra cứu qua các công cụ.\n"
+    "\n"
+    "Công cụ:\n"
+    "- search_docs(query, top_k): tìm kiếm hybrid trên toàn bộ tài liệu — "
+    "công cụ CHÍNH để lấy dữ liệu.\n"
+    "- read_chunk(chunk_id): đọc đầy đủ một đoạn tài liệu theo chunk_id "
+    "(id lấy từ kết quả search_docs).\n"
+    "- list_documents(): liệt kê tài liệu đang có trong hệ thống "
+    "(tên, trạng thái, số đoạn).\n"
     "\n"
     "Quy tắc bắt buộc:\n"
-    "1. Mỗi câu hỏi của người dùng (kể cả câu hỏi tiếp theo trong hội thoại) "
-    "đều PHẢI gọi search_docs trước khi trả lời. Không trả lời chỉ dựa vào "
-    "kiến thức có sẵn hay chỉ dựa vào nội dung chat trước đó.\n"
+    "1. Mỗi câu hỏi của người dùng (kể cả câu hỏi tiếp theo trong hội thoại) đều PHẢI gọi "
+    "search_docs trước khi trả lời. Không trả lời chỉ dựa vào kiến thức có sẵn hay chỉ "
+    "dựa vào nội dung chat trước đó.\n"
     "2. Hội thoại trước chỉ dùng để hiểu ngữ cảnh (người đang hỏi tiếp về ai/cái gì) — "
-    "mọi sự kiện, con số, kỹ năng, kinh nghiệm vẫn phải lấy từ kết quả search_docs "
-    "của lượt này.\n"
+    "mọi sự kiện, con số, kỹ năng, kinh nghiệm vẫn phải lấy từ kết quả tool của lượt này.\n"
     "3. Mỗi khẳng định trong câu trả lời phải kèm trích dẫn [chunk_id] của đoạn tài liệu "
-    "đỡ cho nó (chunk_id từ tool lượt hiện tại).\n"
-    "4. Chỉ dùng thông tin trong kết quả search_docs. Nếu kết quả không đủ, nói rõ là tài liệu "
-    "không có thông tin này — không suy diễn, không bịa.\n"
+    "đỡ cho nó (chunk_id từ kết quả search_docs hoặc read_chunk của lượt hiện tại).\n"
+    "4. Chỉ dùng thông tin từ kết quả tool. Nếu search chưa đủ: thử từ khóa khác, dùng "
+    "read_chunk đọc kỹ đoạn đã thấy, hoặc list_documents để biết đang có tài liệu gì. "
+    "Nếu vẫn không có → nói rõ là tài liệu không có thông tin này — không suy diễn, "
+    "không bịa.\n"
     "5. Trả lời bằng tiếng Việt, ngắn gọn, đi thẳng vào câu hỏi.\n"
     "6. Nếu cần, gọi search_docs nhiều lần với truy vấn khác nhau để đủ thông tin.\n"
 )
@@ -60,29 +68,90 @@ class AgentResult:
     low_confidence: bool = False
 
 
-def _build_search_trace(messages: list[BaseMessage]) -> list[dict[str, Any]]:
-    """Đọc lại messages để dựng trace: lượt nào tìm gì, được bao nhiêu kết quả."""
+def _parse_tool_payload(content: Any) -> Any:
+    """Parse nội dung ToolMessage (chuỗi JSON) — trả None nếu không parse được."""
+    try:
+        return json.loads(content) if isinstance(content, str) else None
+    except json.JSONDecodeError:
+        return None
+
+
+def _iter_chunks(payload: Any) -> list[dict[str, Any]]:
+    """Các chunk hợp lệ trong payload tool: list kết quả (search) hoặc dict đơn (read_chunk).
+
+    Mọi dict có chunk_id đều tính là bằng chứng citation; tool không trả chunk
+    (như list_documents) tự động bị bỏ qua.
+    """
+    if isinstance(payload, list):
+        return [c for c in payload if isinstance(c, dict) and c.get("chunk_id")]
+    if isinstance(payload, dict) and payload.get("chunk_id"):
+        return [payload]
+    return []
+
+
+def _tool_trace_entry(name: str, args: dict[str, Any], payload: Any) -> dict[str, Any] | None:
+    """Entry trace cho một lượt tool hoàn tất — mỗi tool một shape, đánh dấu bằng `name`.
+
+    Trả None với tool chưa có renderer; caller fallback về shape search.
+    """
+    if name == "read_chunk":
+        chunk = payload if isinstance(payload, dict) and payload.get("chunk_id") else None
+        return {
+            "name": "read_chunk",
+            "chunk_id": str(args.get("chunk_id", "")),
+            "doc": str(chunk.get("doc", "")) if chunk else "",
+            "section": str(chunk.get("section", "")) if chunk else "",
+            "found": chunk is not None,
+        }
+    if name == "list_documents":
+        docs = payload if isinstance(payload, list) else []
+        return {
+            "name": "list_documents",
+            "n_docs": len(docs),
+            "docs": [str(d.get("doc", "")) for d in docs if isinstance(d, dict)],
+        }
+    if name in ("", "search_docs"):
+        chunks = _iter_chunks(payload)
+        return {
+            "name": "search_docs",
+            "query": str(args.get("query", "")),
+            "n_results": len(chunks),
+            "chunk_ids": [c.get("chunk_id") for c in chunks],
+            "max_score": max((c.get("score", 0.0) for c in chunks), default=0.0),
+        }
+    return None
+
+
+def _build_tool_trace(messages: list[BaseMessage]) -> list[dict[str, Any]]:
+    """Dựng trace tool từ messages: mỗi ToolMessage một entry theo loại tool.
+
+    Trace chứa TẤT CẢ tool (search/read/list) để UI hiển thị đủ; riêng điểm tin
+    cậy (low_confidence) chỉ tính trên các entry search_docs. Khớp tool_call ↔
+    ToolMessage bằng tool_call_id, thiếu id thì khớp theo thứ tự (fallback).
+    """
     trace: list[dict[str, Any]] = []
-    pending_queries: list[str] = []
+    pending: list[dict[str, Any]] = []  # tool_call đã phát, chờ ToolMessage tương ứng
     for msg in messages:
         if isinstance(msg, AIMessage) and msg.tool_calls:
             for call in msg.tool_calls:
-                if call.get("name") == "search_docs":
-                    pending_queries.append(str(call.get("args", {}).get("query", "")))
+                pending.append(
+                    {
+                        "id": call.get("id"),
+                        "name": call.get("name") or "",
+                        "args": call.get("args") or {},
+                    }
+                )
         elif isinstance(msg, ToolMessage):
-            query = pending_queries.pop(0) if pending_queries else ""
-            try:
-                chunks = json.loads(msg.content) if isinstance(msg.content, str) else []
-            except json.JSONDecodeError:
-                chunks = []
-            trace.append(
-                {
-                    "query": query,
-                    "n_results": len(chunks),
-                    "chunk_ids": [c.get("chunk_id") for c in chunks],
-                    "max_score": max((c.get("score", 0.0) for c in chunks), default=0.0),
-                }
-            )
+            call = next((c for c in pending if c["id"] and c["id"] == msg.tool_call_id), None)
+            if call is not None:
+                pending.remove(call)
+            elif pending:
+                call = pending.pop(0)
+            else:
+                call = {"name": "", "args": {}}
+            entry = _tool_trace_entry(call["name"], call["args"], _parse_tool_payload(msg.content))
+            if entry is not None:
+                trace.append(entry)
     return trace
 
 
@@ -92,13 +161,8 @@ def _collect_tool_chunks(messages: list[BaseMessage]) -> dict[str, dict[str, Any
     for msg in messages:
         if not isinstance(msg, ToolMessage):
             continue
-        try:
-            payload = json.loads(msg.content) if isinstance(msg.content, str) else []
-        except json.JSONDecodeError:
-            continue
-        for chunk in payload:
-            if isinstance(chunk, dict) and chunk.get("chunk_id"):
-                chunks[chunk["chunk_id"]] = chunk
+        for chunk in _iter_chunks(_parse_tool_payload(msg.content)):
+            chunks[chunk["chunk_id"]] = chunk
     return chunks
 
 
@@ -120,7 +184,7 @@ def _extract_reasoning(messages: list[BaseMessage]) -> str:
 
 
 class RagAgent:
-    """Agent RAG với 1 tool search_docs, vòng lặp hữu hạn."""
+    """Agent RAG chạy vòng lặp hữu hạn trên tool registry (search_docs, read_chunk, list_documents)."""  # noqa: E501
 
     def __init__(self, cfg: Config, retriever: Retriever, store: Any = None):
         self.cfg = cfg
@@ -230,6 +294,7 @@ class RagAgent:
                 ),
                 tool_returned={c["chunk_id"]: c for c in fallback.chunks},
                 search_trace=[{
+                    "name": "search_docs",
                     "query": question,
                     "n_results": len(fallback.chunks),
                     "chunk_ids": [c["chunk_id"] for c in fallback.chunks],
@@ -239,8 +304,11 @@ class RagAgent:
             )
 
         tool_returned = _collect_tool_chunks(messages)
-        trace = _build_search_trace(messages)
-        max_score = max((t["max_score"] for t in trace), default=0.0)
+        trace = _build_tool_trace(messages)
+        # Điểm tin cậy chỉ đánh giá các lượt search; read/list không có score
+        # cosine nên không được kéo max_score về 0 (tránh flag oan).
+        search_scores = [t["max_score"] for t in trace if t["name"] == "search_docs"]
+        max_score = max(search_scores, default=0.0)
         return AgentResult(
             answer=answer.strip(),
             tool_returned=tool_returned,
@@ -248,7 +316,7 @@ class RagAgent:
             reasoning=_extract_reasoning(messages),
             # Chỉ cảnh báo khi THỰC SỰ đã tra cứu mà điểm thấp. Câu chào hỏi
             # không gọi tool thì không có gì để đánh giá → không flag.
-            low_confidence=bool(trace) and max_score < self.cfg.min_score,
+            low_confidence=bool(search_scores) and max_score < self.cfg.min_score,
         )
 
     # ---------- streaming (ChatGPT/Claude-style) ----------
@@ -264,7 +332,8 @@ class RagAgent:
         Events yield ra (cho SSE):
         - {"type":"thinking","delta":str}      reasoning gõ dần
         - {"type":"tool_start",...}            LLM vừa phát tool_call (tool đang chạy)
-        - {"type":"tool_call",...}             một lượt search_docs hoàn tất (kèm kết quả)
+        - {"type":"tool_call",...}             một lượt tool hoàn tất
+                                               (kèm `name` + payload theo loại tool)
         - {"type":"answer","delta":str}        câu trả lời gõ dần
         - {"type":"answer_clear"}              xóa phần answer đã stream (do đó chỉ là
                                                lời dẫn trung gian trước một tool_call)
@@ -329,36 +398,33 @@ class RagAgent:
                             yield {"type": "answer", "delta": chunk.content}
 
                 elif isinstance(chunk, ToolMessage):
-                    # Một lượt search_docs vừa hoàn tất → phát kết quả ngay.
-                    try:
-                        chunks = json.loads(chunk.content) if isinstance(chunk.content, str) else []
-                    except json.JSONDecodeError:
-                        chunks = []
+                    # Một lượt tool vừa hoàn tất → dựng entry theo loại tool, phát ngay.
                     idx = next(
                         (i for i, tid in tool_id_by_idx.items() if tid == chunk.tool_call_id),
                         0,
                     )
-                    query = ""
+                    name = tool_name_by_idx.get(idx, "")
                     raw_args = tool_args_by_idx.get(idx, "")
+                    args: dict[str, Any] = {}
                     if raw_args:
                         try:
-                            query = str(json.loads(raw_args).get("query", ""))
+                            parsed = json.loads(raw_args)
+                            if isinstance(parsed, dict):
+                                args = parsed
                         except json.JSONDecodeError:
-                            pass
-                    for c in chunks:
-                        if isinstance(c, dict) and c.get("chunk_id"):
-                            tool_returned[c["chunk_id"]] = c
-                    entry = {
-                        "query": query,
-                        "n_results": len(chunks),
-                        "chunk_ids": [c.get("chunk_id") for c in chunks if isinstance(c, dict)],
-                        "max_score": max(
-                            (c.get("score", 0.0) for c in chunks if isinstance(c, dict)),
-                            default=0.0,
-                        ),
-                    }
+                            args = {}
+                    payload = _parse_tool_payload(chunk.content)
+                    for c in _iter_chunks(payload):
+                        tool_returned[c["chunk_id"]] = c
+                    entry = _tool_trace_entry(name, args, payload)
+                    if entry is None:
+                        # Tool chưa có renderer riêng → fallback shape search để không vỡ UI.
+                        entry = _tool_trace_entry("search_docs", args, payload)
                     trace.append(entry)
-                    yield {"type": "tool_call", "index": len(trace), **entry, "chunks": chunks}
+                    event: dict[str, Any] = {"type": "tool_call", "index": len(trace), **entry}
+                    if entry["name"] == "search_docs":
+                        event["chunks"] = _iter_chunks(payload)
+                    yield event
 
                     # Lượt AI kế tiếp là lượt mới: index tool_call reset về 0, nên
                     # phải xóa trạng thái per-lượt kẻo args/id của lượt trước nối
@@ -374,14 +440,15 @@ class RagAgent:
             yield {"type": "error", "message": str(exc)}
             return
 
-        max_score = max((t["max_score"] for t in trace), default=0.0)
+        search_scores = [t["max_score"] for t in trace if t["name"] == "search_docs"]
+        max_score = max(search_scores, default=0.0)
         result = AgentResult(
             answer="".join(pending_content).strip(),
             tool_returned=tool_returned,
             search_trace=trace,
             reasoning="".join(reasoning_parts),
-            # Giống ask_agent: không gọi tool thì không có cơ sở để cảnh báo.
-            low_confidence=bool(trace) and max_score < self.cfg.min_score,
+            # Giống ask_agent: không lượt search nào thì không có cơ sở để cảnh báo.
+            low_confidence=bool(search_scores) and max_score < self.cfg.min_score,
         )
         try:
             rt = get_current_run_tree()  # root run active while agent.stream runs

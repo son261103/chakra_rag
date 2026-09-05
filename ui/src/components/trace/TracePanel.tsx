@@ -1,12 +1,12 @@
 import { FileText, MessageSquare, PanelRightClose, Search } from "lucide-react";
-import type { Citation, SearchTraceEntry } from "../../api/types";
+import type { Citation, ToolTraceEntry } from "../../api/types";
 import ToolCallBlock from "../chat/ToolCallBlock";
 import SourceCard from "../sources/SourceCard";
 
 /** Dữ liệu trace của một tin nhắn (hoặc của tin đang stream) để hiện bên panel phải. */
 export interface PanelTrace {
   question: string;
-  traces: { trace: SearchTraceEntry; running: boolean }[];
+  traces: { trace: ToolTraceEntry; running: boolean }[];
   citations: Citation[];
   /** true khi đang stream — chỉ có tool call, chưa có citations. */
   live: boolean;

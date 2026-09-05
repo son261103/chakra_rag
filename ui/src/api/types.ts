@@ -27,12 +27,31 @@ export interface Citation {
   score: number | null;
 }
 
-export interface SearchTraceEntry {
+/** Entry trong search_trace — mỗi tool một shape, phân biệt bằng `name`.
+ *  `name` tùy chọn ở search vì payload cũ (trước đa-tool) lưu trong DB không có trường này. */
+export interface SearchToolEntry {
+  name?: "search_docs";
   query: string;
   n_results: number;
   chunk_ids: (string | null)[];
   max_score: number;
 }
+
+export interface ReadToolEntry {
+  name: "read_chunk";
+  chunk_id: string;
+  doc: string;
+  section: string;
+  found: boolean;
+}
+
+export interface ListToolEntry {
+  name: "list_documents";
+  n_docs: number;
+  docs: string[];
+}
+
+export type ToolTraceEntry = SearchToolEntry | ReadToolEntry | ListToolEntry;
 
 export interface AskResponse {
   question: string;
@@ -40,7 +59,7 @@ export interface AskResponse {
   citations: Citation[];
   invalid_citations: string[];
   unsupported_claims: string[];
-  search_trace: SearchTraceEntry[];
+  search_trace: ToolTraceEntry[];
   reasoning: string;
   low_confidence: boolean;
   latency_ms: number;
@@ -91,7 +110,7 @@ export interface FileChunksResponse {
 export type StreamEvent =
   | { type: "thinking"; delta: string }
   | { type: "tool_start"; name: string }
-  | { type: "tool_call"; index: number; query: string; n_results: number; chunk_ids: (string | null)[]; max_score: number; chunks: Record<string, unknown>[] }
+  | ({ type: "tool_call"; index: number } & ToolTraceEntry)
   | { type: "answer"; delta: string }
   | { type: "answer_clear" }
   | { type: "done" } & AskResponse
