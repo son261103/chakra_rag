@@ -297,43 +297,91 @@
 }
 
 .chat-scroll {
-  @apply flex-1 overflow-y-auto p-[20px_0_12px];
+  @apply flex flex-1 flex-col overflow-y-auto p-[20px_0_12px];
 }
 
 /* Empty state */
 
 .empty-state {
-  @apply mx-auto mt-[8vh] w-full max-w-[min(68rem,calc(100%-3rem))] px-4 sm:px-6 text-center;
+  @apply relative mx-auto my-auto w-full max-w-[min(70rem,calc(100%-3rem))] px-4 sm:px-6 text-center flex flex-col items-center justify-center py-6;
+}
+
+
+.empty-hero {
+  @apply flex flex-col items-center max-w-[760px] mb-8 px-2 text-center;
 }
 
 .empty-logo {
-  @apply mx-auto mb-4 grid size-[54px] place-items-center rounded-2xl bg-accent text-[26px] text-accent-contrast shadow-sm;
+  @apply mx-auto mb-3.5 grid size-[46px] place-items-center rounded-2xl bg-accent text-accent-contrast shadow-sm transition-transform duration-200;
 }
 
-.empty-state h2 {
-  @apply m-0 mb-2 text-2xl font-bold tracking-tight;
+.empty-logo:hover {
+  transform: scale(1.05);
 }
 
-.empty-state p {
-  @apply m-0 mb-6 text-[14.5px] leading-relaxed text-muted max-w-[620px] mx-auto;
+.empty-hero h2 {
+  @apply m-0 text-[23px] sm:text-[27px] font-semibold tracking-[-0.025em] text-text text-center;
 }
 
 .suggestions {
-  @apply grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-[820px] mx-auto;
+  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 w-full max-w-[980px] mx-auto;
 }
 
 .suggestion-chip {
-  @apply cursor-pointer rounded-xl border border-border/80 bg-bg-card/70 p-[12px_16px] text-left text-[13px] text-text transition-all duration-150;
+  @apply cursor-pointer rounded-2xl border border-border/80 bg-bg-card/70 p-4 text-left transition-all duration-150 flex flex-col justify-between gap-3;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  min-height: 104px;
 }
 
 .suggestion-chip:hover:not(:disabled) {
-  @apply bg-bg-elevated border-accent/40 shadow-xs translate-y-[-1px];
+  @apply bg-bg-elevated border-accent/40 shadow-xs;
+  transform: translateY(-1.5px);
 }
 
 .suggestion-chip:disabled {
   @apply cursor-default opacity-50;
 }
 
+.suggestion-chip-header {
+  @apply flex items-center justify-between gap-2;
+}
+
+.suggestion-chip-tag {
+  @apply flex items-center gap-1.5 min-w-0;
+}
+
+.suggestion-chip-icon {
+  @apply grid size-[24px] shrink-0 place-items-center rounded-lg bg-bg-soft text-accent transition-colors;
+}
+
+.suggestion-chip:hover:not(:disabled) .suggestion-chip-icon {
+  @apply bg-accent text-accent-contrast;
+}
+
+.suggestion-chip-category {
+  @apply text-[11px] font-medium tracking-wide uppercase text-muted/90 truncate transition-colors;
+}
+
+.suggestion-chip:hover:not(:disabled) .suggestion-chip-category {
+  @apply text-accent;
+}
+
+.suggestion-chip-arrow {
+  @apply text-muted/40 shrink-0 transition-all duration-150;
+}
+
+.suggestion-chip:hover:not(:disabled) .suggestion-chip-arrow {
+  @apply text-accent;
+  transform: translate(1px, -1px);
+}
+
+.suggestion-chip-text {
+  @apply m-0 text-[13px] leading-relaxed text-text/85 transition-colors line-clamp-3;
+}
+
+.suggestion-chip:hover:not(:disabled) .suggestion-chip-text {
+  @apply text-text;
+}
 /* Messages */
 
 .message-pair {

@@ -59,7 +59,7 @@ export default function Composer({ onAsk, onStop, disabled, asking, ready }: Pro
               ? "Chờ index tài liệu sẵn sàng…"
               : asking
                 ? "Chakra AI đang phản hồi… (bạn vẫn có thể nhập tiếp)"
-                : "Hỏi về tài liệu nội bộ…"
+                : "Nhập câu hỏi hoặc yêu cầu bất kỳ cho Chakra AI…"
           }
           rows={1}
           disabled={disabled}

@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Sparkles } from "lucide-react";
+import {
+  ArrowUpRight,
+  Code2,
+  Compass,
+  Cpu,
+  Lightbulb,
+  Sparkles,
+  Terminal,
+} from "lucide-react";
 import {
   askStream,
   createConversation,
@@ -23,15 +31,46 @@ export interface QAEntry {
   response: AskResponse;
 }
 
-/** Câu hỏi gợi ý theo hướng “bán mình” cho nhà tuyển dụng — bám CV Phạm Lê Sơn. */
-const SUGGESTIONS = [
-  "Điểm mạnh nổi bật nhất của ứng viên Phạm Lê Sơn khi apply Backend / AI Engineer là gì?",
-  "Kỹ năng LLM, RAG, GraphRAG và AI agent trong CV có thể pitch thế nào cho nhà tuyển dụng?",
-  "Kinh nghiệm tại RedAI (multi-provider AI, BullMQ, FastAPI) chứng minh năng lực production ra sao?",
-  "So với JD Junior AI / Backend, phần nào trong CV Sơn match mạnh và nên nhấn trong phỏng vấn?",
-  "Dự án GraphRAG custom và agent orchestration harness có gì khác biệt, vì sao đáng chú ý?",
-  "Học vấn + intern Java (Spring Boot) bổ trợ thế nào cho hướng Backend/AI Engineer của Sơn?",
+interface SuggestionItem {
+  category: string;
+  icon: typeof Sparkles;
+  question: string;
+}
+
+/** Gợi ý khám phá và tương tác cùng Chakra AI. */
+const SUGGESTIONS: SuggestionItem[] = [
+  {
+    category: "Lập trình thông minh",
+    icon: Code2,
+    question: "Viết giúp tôi một đoạn script Python tự động hóa tác vụ hàng ngày kèm giải thích",
+  },
+  {
+    category: "Khám phá AI & RAG",
+    icon: Sparkles,
+    question: "AI Agent và RAG hoạt động phối hợp với nhau như thế nào trong thực tế?",
+  },
+  {
+    category: "Ý tưởng sáng tạo",
+    icon: Lightbulb,
+    question: "Gợi ý 5 ý tưởng dự án công nghệ thú vị có thể tự xây dựng vào cuối tuần",
+  },
+  {
+    category: "Tối ưu hóa hệ thống",
+    icon: Cpu,
+    question: "Làm sao để thiết kế hệ thống xử lý dữ liệu nhanh, mượt và ít tốn tài nguyên?",
+  },
+  {
+    category: "Góc học hỏi vui vẻ",
+    icon: Compass,
+    question: "Giải thích một khái niệm công nghệ phức tạp theo cách dễ hiểu và hài hước nhất",
+  },
+  {
+    category: "Kỹ thuật chuyên sâu",
+    icon: Terminal,
+    question: "Tóm tắt các công nghệ và dự án nổi bật mà tôi có thể tham khảo trong hệ thống",
+  },
 ];
+
 
 const EMPTY_STREAM = (question: string): StreamingState => ({
   question,
@@ -368,20 +407,39 @@ export default function App() {
         <div ref={chatScrollRef} className="chat-scroll side-scroll">
           {history.length === 0 && !asking && (
             <div className="empty-state">
-              <div className="empty-logo">
-                <Sparkles size={24} />
+              {/* Logo & Headline */}
+              <div className="empty-hero">
+                <div className="empty-logo">
+                  <Sparkles size={22} />
+                </div>
+                <h2>Tôi có thể giúp gì cho bạn?</h2>
               </div>
-              <h2>Tôi có thể giúp gì?</h2>
-              <p>
-                Upload CV (PDF) rồi hỏi để luyện pitch với nhà tuyển dụng — tôi tra cứu tài liệu và
-                trích dẫn nguồn.
-              </p>
+
+              {/* Suggestions grid */}
               <div className="suggestions">
-                {SUGGESTIONS.map((s) => (
-                  <button key={s} className="suggestion-chip" onClick={() => handleAsk(s)} disabled={!ready}>
-                    {s}
-                  </button>
-                ))}
+                {SUGGESTIONS.map((s) => {
+                  const Icon = s.icon;
+                  return (
+                    <button
+                      key={s.question}
+                      className="suggestion-chip"
+                      onClick={() => handleAsk(s.question)}
+                      disabled={!ready}
+                      type="button"
+                    >
+                      <div className="suggestion-chip-header">
+                        <div className="suggestion-chip-tag">
+                          <span className="suggestion-chip-icon">
+                            <Icon size={12} />
+                          </span>
+                          <span className="suggestion-chip-category">{s.category}</span>
+                        </div>
+                        <ArrowUpRight size={13} className="suggestion-chip-arrow" />
+                      </div>
+                      <p className="suggestion-chip-text">{s.question}</p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
