@@ -45,8 +45,10 @@ class FakeAgentResult:
 
 
 def test_telemetry_module_removed():
+    import importlib
+
     with pytest.raises(ModuleNotFoundError):
-        import observability.telemetry  # noqa: F401
+        importlib.import_module("observability.telemetry")
 
 
 def test_ask_submits_feedback_scores(make_service):
