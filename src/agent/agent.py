@@ -33,33 +33,42 @@ from core.security import decrypt_integration_key
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = (
-    "Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu nội bộ kết hợp "
-    "kiến thức chuyên môn.\n"
-    "\n"
-    "Công cụ tra cứu (phễu: tìm trước — đọc sau):\n"
-    "- search_docs(query, top_k): tìm hybrid trên toàn bộ tài liệu — công cụ CHÍNH để "
-    "định vị bằng chứng. Chỉ trả về chunk_id, nguồn, điểm và excerpt ~150 ký tự "
-    "(bản rút gọn để đánh giá liên quan).\n"
-    "- read_chunk(chunk_id): đọc nội dung đầy đủ một đoạn tài liệu theo chunk_id (lấy "
-    "từ search_docs), kèm đoạn liền trước/sau trong cùng tài liệu.\n"
-    "- list_documents(): liệt kê tài liệu đang có trong hệ thống (tên, trạng thái, số đoạn).\n"  # noqa: E501
-    "\n"
-    "Quy tắc bắt buộc:\n"
-    "1. Ưu tiên tra cứu tài liệu: Với câu hỏi về dữ liệu, hồ sơ, sự kiện, dự án hoặc "
-    "thông tin nội bộ, PHẢI gọi search_docs trước để tìm bằng chứng.\n"
-    "2. Đọc trước khi trích dẫn: KHÔNG trả lời dựa trên excerpt. Chọn 1-2 đoạn liên "
-    "quan nhất từ kết quả search và gọi read_chunk để lấy nội dung đầy đủ trước khi "
-    "khẳng định. Mọi khẳng định lấy từ tài liệu nội bộ phải kèm mã trích dẫn "
-    "[chunk_id] của đoạn đã đọc (chunk_id từ read_chunk).\n"
-    "3. Tự dừng và dùng kiến thức chung (tránh lặp tool): Tối đa 2 lượt search và 2 lượt "
-    "read cho một câu hỏi. Nếu tài liệu không có thông tin phù hợp, hoặc câu hỏi là "
-    "về lập trình, giải thích khái niệm, tư vấn ý tưởng chung ngoài tài liệu: PHẢI "
-    "DỪNG việc gọi tool ngay, nêu rõ nếu tài liệu không đề cập và dùng kiến thức chung "
-    "hữu ích để trả lời chu đáo cho người dùng (không gắn trích dẫn khi dùng kiến thức "
-    "chung). Tuyệt đối không gọi tool lặp đi lặp lại với các từ khóa tương tự.\n"
-    "4. Trả lời bằng tiếng Việt rõ ràng, mạch lạc, đi thẳng vào câu hỏi.\n"
-)
+def build_system_prompt(max_agent_turns: int) -> str:
+    """System prompt dựng theo ngân sách tool của Config.
+
+    Ngân sách lượt tool trong prompt TRÙNG với giới hạn cứng của runtime
+    (recursion_limit = 2*max_agent_turns + 1 bước graph ≈ max_agent_turns lượt
+    tool_call) — đổi MAX_AGENT_TURNS thì cả hai cùng theo, không còn hai con
+    số tự mâu thuẫn (prompt chặn sớm hơn runtime hoặc ngược lại).
+    """
+    return (
+        "Bạn là trợ lý trả lời câu hỏi dựa trên tài liệu nội bộ kết hợp "
+        "kiến thức chuyên môn.\n"
+        "\n"
+        "Công cụ tra cứu (phễu: tìm trước — đọc sau):\n"
+        "- search_docs(query, top_k): tìm hybrid trên toàn bộ tài liệu — công cụ CHÍNH để "
+        "định vị bằng chứng. Chỉ trả về chunk_id, nguồn, điểm và excerpt ~150 ký tự "
+        "(bản rút gọn để đánh giá liên quan).\n"
+        "- read_chunk(chunk_id): đọc nội dung đầy đủ một đoạn tài liệu theo chunk_id (lấy "
+        "từ search_docs), kèm đoạn liền trước/sau trong cùng tài liệu.\n"
+        "- list_documents(): liệt kê tài liệu đang có trong hệ thống (tên, trạng thái, số đoạn).\n"  # noqa: E501
+        "\n"
+        "Quy tắc bắt buộc:\n"
+        "1. Ưu tiên tra cứu tài liệu: Với câu hỏi về dữ liệu, hồ sơ, sự kiện, dự án hoặc "
+        "thông tin nội bộ, PHẢI gọi search_docs trước để tìm bằng chứng.\n"
+        "2. Đọc trước khi trích dẫn: KHÔNG trả lời dựa trên excerpt. Chọn 1-2 đoạn liên "
+        "quan nhất từ kết quả search và gọi read_chunk để lấy nội dung đầy đủ trước khi "
+        "khẳng định. Mọi khẳng định lấy từ tài liệu nội bộ phải kèm mã trích dẫn "
+        "[chunk_id] của đoạn đã đọc (chunk_id từ read_chunk).\n"
+        "3. Tự dừng và dùng kiến thức chung (tránh lặp tool): Tối đa "
+        f"{max_agent_turns} lượt gọi tool cho một câu hỏi (search và read cộng lại). "
+        "Nếu tài liệu không có thông tin phù hợp, hoặc câu hỏi là "
+        "về lập trình, giải thích khái niệm, tư vấn ý tưởng chung ngoài tài liệu: PHẢI "
+        "DỪNG việc gọi tool ngay, nêu rõ nếu tài liệu không đề cập và dùng kiến thức chung "
+        "hữu ích để trả lời chu đáo cho người dùng (không gắn trích dẫn khi dùng kiến thức "
+        "chung). Tuyệt đối không gọi tool lặp đi lặp lại với các từ khóa tương tự.\n"
+        "4. Trả lời bằng tiếng Việt rõ ràng, mạch lạc, đi thẳng vào câu hỏi.\n"
+    )
 
 
 @dataclass
@@ -299,7 +308,9 @@ class RagAgent:
             )
             tools = build_tools(deps)
             llm = self._make_llm()
-            self._agent = create_react_agent(llm, tools, prompt=SYSTEM_PROMPT)
+            self._agent = create_react_agent(
+                llm, tools, prompt=build_system_prompt(self.cfg.max_agent_turns)
+            )
             self._current_integration_fingerprint = fingerprint
         return self._agent
 
@@ -326,6 +337,7 @@ class RagAgent:
         question: str,
         history: list[dict[str, str]] | None = None,
         config: dict | None = None,
+        top_k: int | None = None,
     ) -> AgentResult:
         agent = self._get_agent()
         recursion_limit = 2 * self.cfg.max_agent_turns + 1
@@ -340,15 +352,18 @@ class RagAgent:
             )
             messages: list[BaseMessage] = result["messages"]
             answer = str(messages[-1].content) if messages else ""
-        except Exception as exc:  # noqa: BLE001 — mọi lỗi đều phải degrade an toàn, không crash
+        except Exception:  # noqa: BLE001 — mọi lỗi đều phải degrade an toàn, không crash
             logger.exception("agent loop failed — fallback to direct retrieve")
             # Quá lượt hoặc lỗi runtime: không có messages hoàn chỉnh.
             # Trả về câu trả lời an toàn dựa trên 1 lượt retrieve trực tiếp.
-            fallback = self.retriever.search(question)
+            # top_k là tham số tường minh của request — không đọc/ghi trạng thái
+            # dùng chung trên Retriever (tránh race giữa các request song song).
+            # Chi tiết lỗi chỉ vào log, không leak text exception vào câu trả lời.
+            fallback = self.retriever.search(question, top_k)
             return AgentResult(
                 answer=(
-                    "Xin lỗi, tôi chưa hoàn tất được việc tra cứu cho câu hỏi này "
-                    f"(lỗi: {exc})."
+                    "Xin lỗi, tôi chưa hoàn tất được việc tra cứu cho câu hỏi này. "
+                    "Bạn vui lòng thử lại."
                 ),
                 tool_returned={c["chunk_id"]: c for c in fallback.chunks},
                 search_trace=[{
@@ -491,9 +506,13 @@ class RagAgent:
                     tool_started.clear()
                     turn_is_tool = False
                     pending_content = []
-        except Exception as exc:  # noqa: BLE001 — stream lỗi phải báo UI, không crash server
+        except Exception:  # noqa: BLE001 — stream lỗi phải báo UI, không crash server
             logger.exception("agent stream failed")
-            yield {"type": "error", "message": str(exc)}
+            # Chi tiết lỗi chỉ vào log — message cho UI là thông báo chung, không leak.
+            yield {
+                "type": "error",
+                "message": "Đã xảy ra lỗi khi xử lý câu hỏi. Bạn vui lòng thử lại.",
+            }
             return
 
         search_scores = [t["max_score"] for t in trace if t["name"] == "search_docs"]

@@ -56,8 +56,10 @@ def make_search_docs(deps: ToolDeps) -> BaseTool:
 
     @tool
     @traceable(run_type="retriever", name="search_docs_tool")
-    def search_docs(query: str, top_k: int = 5) -> str:
+    def search_docs(query: str, top_k: int | None = None) -> str:
         """Tìm kiếm tài liệu nội bộ. Trả về JSON danh sách các đoạn liên quan: mỗi đoạn gồm chunk_id, nguồn, điểm và excerpt xem trước (bản rút gọn ~150 ký tự). Muốn nội dung đầy đủ của đoạn nào thì gọi read_chunk với chunk_id đó."""  # noqa: E501
+        # top_k=None → dùng mặc định của Retriever (cfg.top_k) — một nguồn sự
+        # thật duy nhất, không nhân bản hằng số 5 trong signature của tool.
         result: RetrievalResult = retriever.search(query, top_k)
         return json.dumps(_to_tool_payload(result), ensure_ascii=False)
 

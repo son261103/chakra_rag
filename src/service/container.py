@@ -79,7 +79,6 @@ class ServiceContainer:
         # 5. Chat Service (RAG execution)
         self.chat = ChatService(
             self.chunk_repo,
-            self.retriever,
             self.agent,
             self.conversations,
             self.cfg,
