@@ -1,6 +1,6 @@
 """Registry cho agent tools: mỗi tool là một factory nhận `ToolDeps`, trả về `BaseTool`.
 
-Tool cần dependency injection (retriever, store...) nên khai báo dạng factory
+Tool cần dependency injection (retriever, chunk_repo, file_repo...) nên khai báo dạng factory
 bọc closure thay vì hàm module-level. Thêm tool mới:
 1. Tạo file trong agent/tools/, đánh dấu factory bằng @register_tool("ten_tool").
 2. Import module đó trong agent/tools/__init__.py (side-effect đăng ký).
@@ -23,7 +23,8 @@ class ToolDeps:
     """Dependency chung truyền vào các tool factory."""
 
     retriever: Retriever
-    store: Any = None  # storage.Store — dùng Any để khỏi kéo thêm import kiểu
+    chunk_repo: Any = None  # repositories.ChunkRepository — Any để khỏi kéo import kiểu
+    file_repo: Any = None  # repositories.FileRepository — Any để khỏi kéo import kiểu
 
 
 # Tên tool -> factory(deps) -> BaseTool

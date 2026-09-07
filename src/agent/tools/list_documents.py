@@ -11,15 +11,15 @@ from agent.tools.registry import ToolDeps, register_tool
 
 @register_tool("list_documents")
 def make_list_documents(deps: ToolDeps) -> BaseTool:
-    """Factory tool list_documents: closure giữ store của container hiện tại."""
-    store = deps.store
+    """Factory tool list_documents: closure giữ file repo của container hiện tại."""
+    files_repo = deps.file_repo
 
     @tool
     def list_documents() -> str:
         """Liệt kê các tài liệu đang có trong hệ thống (tên, trạng thái, số đoạn). Dùng khi cần biết index đang có gì, hoặc khi search không ra kết quả để trả lời chính xác là tài liệu không có thông tin."""  # noqa: E501
-        if store is None:
+        if files_repo is None:
             return json.dumps([], ensure_ascii=False)
-        files = store.list_files()
+        files = files_repo.list_files()
         payload = [
             {
                 "doc": f["name"],

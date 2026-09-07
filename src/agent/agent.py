@@ -189,21 +189,21 @@ def _collect_tool_chunks(messages: list[BaseMessage]) -> dict[str, dict[str, Any
 
 
 def _hydrate_evidence(
-    tool_returned: dict[str, dict[str, Any]], store: Any
+    tool_returned: dict[str, dict[str, Any]], chunk_repo: Any
 ) -> dict[str, dict[str, Any]]:
-    """Nạp lại full text từ store cho các chunk evidence còn thiếu text.
+    """Nạp lại full text từ DB cho các chunk evidence còn thiếu text.
 
     search_docs giờ chỉ trả excerpt nên evidence từ search không đủ text đầy
     đủ cho citation verifier (n-gram support check). Chunk nào thiếu text
     (hoặc text bị cắt) được nạp lại từ store — tính chống bịa cite không đổi:
     chunk_id vẫn phải do tool trả về trong phiên thì mới vào được đây.
     """
-    if store is None:
+    if chunk_repo is None:
         return tool_returned
     for chunk_id, chunk in tool_returned.items():
         if "text" in chunk and "excerpt" not in chunk:
             continue  # read_chunk đã trả text đầy đủ
-        full = store.get_chunk(chunk_id)
+        full = chunk_repo.get_chunk(chunk_id)
         if full:
             hydrated = {**chunk, "text": full["text"]}
             hydrated.pop("excerpt", None)
@@ -231,17 +231,26 @@ def _extract_reasoning(messages: list[BaseMessage]) -> str:
 class RagAgent:
     """Agent RAG chạy vòng lặp hữu hạn trên tool registry (search_docs, read_chunk, list_documents)."""  # noqa: E501
 
-    def __init__(self, cfg: Config, retriever: Retriever, store: Any = None):
+    def __init__(
+        self,
+        cfg: Config,
+        retriever: Retriever,
+        chunk_repo: Any = None,
+        file_repo: Any = None,
+        integration_repo: Any = None,
+    ):
         self.cfg = cfg
         self.retriever = retriever
-        self.store = store
+        self.chunk_repo = chunk_repo
+        self.file_repo = file_repo
+        self.integration_repo = integration_repo
         self._agent = None
         self._current_integration_fingerprint: tuple[str, str, str] | None = None
 
     def resolve_active_llm_config(self) -> tuple[str, str, str]:
         """Lấy (model, base_url, api_key) từ active integration trong DB (hoặc fallback Config)."""
-        if self.store is not None:
-            active = self.store.get_active_integration()
+        if self.integration_repo is not None:
+            active = self.integration_repo.get_active_integration()
             if active:
                 try:
                     decrypted_key = decrypt_integration_key(
@@ -283,7 +292,11 @@ class RagAgent:
         model, base_url, api_key = self.resolve_active_llm_config()
         fingerprint = (model, base_url, api_key)
         if self._agent is None or self._current_integration_fingerprint != fingerprint:
-            deps = ToolDeps(retriever=self.retriever, store=self.store)
+            deps = ToolDeps(
+                retriever=self.retriever,
+                chunk_repo=self.chunk_repo,
+                file_repo=self.file_repo,
+            )
             tools = build_tools(deps)
             llm = self._make_llm()
             self._agent = create_react_agent(llm, tools, prompt=SYSTEM_PROMPT)
@@ -348,7 +361,7 @@ class RagAgent:
                 low_confidence=True,
             )
 
-        tool_returned = _hydrate_evidence(_collect_tool_chunks(messages), self.store)
+        tool_returned = _hydrate_evidence(_collect_tool_chunks(messages), self.chunk_repo)
         trace = _build_tool_trace(messages)
         # Điểm tin cậy chỉ đánh giá các lượt search; read/list không có score
         # cosine nên không được kéo max_score về 0 (tránh flag oan).
@@ -487,7 +500,7 @@ class RagAgent:
         max_score = max(search_scores, default=0.0)
         result = AgentResult(
             answer="".join(pending_content).strip(),
-            tool_returned=_hydrate_evidence(tool_returned, self.store),
+            tool_returned=_hydrate_evidence(tool_returned, self.chunk_repo),
             search_trace=trace,
             reasoning="".join(reasoning_parts),
             # Giống ask_agent: không lượt search nào thì không có cơ sở để cảnh báo.

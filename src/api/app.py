@@ -28,10 +28,10 @@ async def lifespan(app: FastAPI):
     setup_logging()
     cfg = get_config()
     services = ServiceContainer(cfg)
-    worker = IngestWorker(cfg, services.store, services.embedder)
+    worker = IngestWorker(cfg, services.file_repo, services.chunk_repo, services.embedder)
     services.attach_worker(worker)
 
-    interrupted = services.store.fail_interrupted_ingests()
+    interrupted = services.file_repo.fail_interrupted_ingests()
     if interrupted:
         logger.warning(
             "marked %d interrupted ingest job(s) as failed (no auto-reingest on startup)",
@@ -46,8 +46,8 @@ async def lifespan(app: FastAPI):
         "(ready statuses only from previous successful ingest)",
         cfg.db_path,
         cfg.uploads_dir,
-        services.store.count_chunks(),
-        len(services.store.list_files()),
+        services.chunk_repo.count_chunks(),
+        len(services.file_repo.list_files()),
     )
     yield
     worker.stop()

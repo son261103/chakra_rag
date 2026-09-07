@@ -46,12 +46,12 @@ def test_ask_happy_path_stores_turn(service):
     fr.reasoning = ""
     fr.low_confidence = False
 
-    cid = service.store.create_conversation()["id"]
+    cid = service.conversations.create_conversation()["id"]
     with patch.object(service.chat, "agent") as ag:
         ag.ask_agent.return_value = fr
         payload = service.chat.ask("hỏi gì đó", conversation_id=cid)
     assert payload["low_confidence"] is False
-    msgs = service.store.list_messages(cid)
+    msgs = service.conversations.list_messages(cid)
     assert [m["role"] for m in msgs] == ["user", "assistant"]
     assert msgs[1]["payload"] is not None  # payload_json vẫn ghi (UI replay cần)
 

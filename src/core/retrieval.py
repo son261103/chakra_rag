@@ -15,7 +15,7 @@ from typing import Any
 from langsmith import traceable
 
 from core.embedding import Embedder
-from storage.store import Store
+from repositories import ChunkRepository
 
 
 @dataclass
@@ -42,18 +42,18 @@ def reciprocal_rank_fusion(
 
 
 class Retriever:
-    """Hybrid retriever trên Store + Embedder."""
+    """Hybrid retriever trên ChunkRepository + Embedder."""
 
     def __init__(
         self,
-        store: Store,
+        chunk_repo: ChunkRepository,
         embedder: Embedder,
         top_k: int = 5,
         rrf_k: int = 60,
         min_score: float = 0.25,
         use_fts: bool = True,
     ):
-        self.store = store
+        self.chunk_repo = chunk_repo
         self.embedder = embedder
         self.top_k = top_k
         self.rrf_k = rrf_k
@@ -65,10 +65,10 @@ class Retriever:
         top_k = top_k or self.top_k
         query_vec = self.embedder.embed_one(query)
 
-        vector_hits = self.store.vector_search(query_vec, top_k * 2)
+        vector_hits = self.chunk_repo.vector_search(query_vec, top_k * 2)
         ranked_lists = [vector_hits]
         if self.use_fts:
-            fts_hits = self.store.fts_search(query, top_k * 2)
+            fts_hits = self.chunk_repo.fts_search(query, top_k * 2)
             ranked_lists.append(fts_hits)
 
         fused = reciprocal_rank_fusion(ranked_lists, k=self.rrf_k)[:top_k]

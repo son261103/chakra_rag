@@ -7,7 +7,7 @@ from typing import Any
 
 from config import Config, get_config
 from ingestion.worker import IngestWorker, extract_text
-from storage.store import Store
+from repositories import ChunkRepository, FileRepository
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +17,13 @@ class FileService:
 
     def __init__(
         self,
-        store: Store,
+        file_repo: FileRepository,
+        chunk_repo: ChunkRepository,
         worker: IngestWorker | None = None,
         cfg: Config | None = None,
     ):
-        self.store = store
+        self.file_repo = file_repo
+        self.chunk_repo = chunk_repo
         self.worker = worker
         self.cfg = cfg or get_config()
 
@@ -37,15 +39,15 @@ class FileService:
 
     def list_files(self) -> list[dict[str, Any]]:
         """Lấy danh sách tệp tin cùng trạng thái ingest từ database."""
-        return self.store.list_files()
+        return self.file_repo.list_files()
 
     def inspect_file(self, file_id: str) -> dict[str, Any] | None:
         """Xem dữ liệu chunks đã index cùng full text gốc trên đĩa."""
-        meta = self.store.get_file(file_id)
+        meta = self.file_repo.get_file(file_id)
         if meta is None:
             return None
 
-        chunks = self.store.list_chunks_by_doc(meta["name"])
+        chunks = self.chunk_repo.list_chunks_by_doc(meta["name"])
         full_text = ""
         full_text_error = None
 

@@ -16,4 +16,4 @@ class HealthResponse(BaseModel):
 @router.get("/health", response_model=HealthResponse)
 def health(request: Request) -> HealthResponse:
     service = request.app.state.service
-    return {"status": "ok", "chunks": service.store.count_chunks()}
+    return {"status": "ok", "chunks": service.chunk_repo.count_chunks()}

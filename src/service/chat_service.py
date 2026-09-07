@@ -12,8 +12,8 @@ from core.retrieval import Retriever
 from core.verification import VerifiedAnswer, verify_answer
 from observability.timing import elapsed_ms, timed
 from observability.tracing import trace_metadata
+from repositories import ChunkRepository
 from service.conversation_service import ConversationService
-from storage.store import Store
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +23,13 @@ class ChatService:
 
     def __init__(
         self,
-        store: Store,
+        chunk_repo: ChunkRepository,
         retriever: Retriever,
         agent: RagAgent,
         conversations: ConversationService,
         cfg: Config | None = None,
     ):
-        self.store = store
+        self.chunk_repo = chunk_repo
         self.retriever = retriever
         self.agent = agent
         self.conversations = conversations
@@ -173,4 +173,4 @@ class ChatService:
 
     def get_chunk(self, chunk_id: str) -> dict[str, Any] | None:
         """Lấy thông tin chunk gốc để phục vụ xem trích dẫn."""
-        return self.store.get_chunk(chunk_id)
+        return self.chunk_repo.get_chunk(chunk_id)

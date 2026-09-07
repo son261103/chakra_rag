@@ -20,15 +20,15 @@ from agent.tools.registry import ToolDeps, register_tool
 
 @register_tool("read_chunk")
 def make_read_chunk(deps: ToolDeps) -> BaseTool:
-    """Factory tool read_chunk: closure giữ store của container hiện tại."""
-    store = deps.store
+    """Factory tool read_chunk: closure giữ chunk repo của container hiện tại."""
+    chunks = deps.chunk_repo
 
     @tool
     def read_chunk(chunk_id: str) -> str:
         """Đọc nội dung đầy đủ của một đoạn tài liệu theo chunk_id (id lấy từ kết quả search_docs), kèm các đoạn liền kề trước/sau trong cùng tài liệu để có ngữ cảnh."""  # noqa: E501
-        if store is None:
+        if chunks is None:
             return json.dumps({"error": "Chưa có kho lưu trữ tài liệu."}, ensure_ascii=False)
-        hood = store.get_chunk_neighborhood(chunk_id)
+        hood = chunks.get_chunk_neighborhood(chunk_id)
         if not hood:
             return json.dumps(
                 {

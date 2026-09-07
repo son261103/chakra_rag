@@ -15,10 +15,7 @@ def client(tmp_path):
     app = api_mod.app
     service = MagicMock(name="service")
     worker = MagicMock(name="worker")
-    service.store.count_chunks.return_value = 7
-    service.store.list_files.return_value = []
-    service.store.list_conversations.return_value = []
-    service.store.create_conversation.return_value = {"id": "c1", "title": "Hội thoại mới"}
+    service.chunk_repo.count_chunks.return_value = 7
     service.conversations.create_conversation.return_value = {"id": "c1", "title": "Hội thoại mới"}
     service.conversations.list_conversations.return_value = []
     service.files.list_files.return_value = []

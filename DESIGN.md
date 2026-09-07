@@ -110,7 +110,7 @@ Vì sao hợp với bài này:
   CREATE VIRTUAL TABLE vec_chunks USING vec0(embedding float[384]);  -- rowid = chunks.id
   CREATE VIRTUAL TABLE fts_chunks USING fts5(text, content='chunks', content_rowid='id');
   ```
-- Lưu ý: `pip sqlite-vec` bundle sẵn extension cho Linux x64; bật/tắt `enable_load_extension` ngay khi mở connection, đóng gói vào 1 module `store.py`.
+- Lưu ý: `pip sqlite-vec` bundle sẵn extension cho Linux x64; bật/tắt `enable_load_extension` ngay khi mở connection. Phần DDL tách riêng ở `storage/schema.py`; `storage/connection.py` (`Database`) mở connection duy nhất + load extension + chạy schema; truy vấn SQL theo domain nằm ở `repositories/`.
 
 ### 3.5 Retrieval: hybrid vector + lexical, fusion bằng RRF
 - Vector bắt nghĩa tốt nhưng hay trượt **từ khóa chính xác** (tên riêng, con số, mã hiệu — ví dụ "mức hoàn phí tối đa 5 triệu"). FTS5 bù đúng chỗ đó. Với tiếng Việt, FTS5 unicode61 không tách từ hoàn hảo nhưng vẫn bắt exact term tốt.
@@ -265,7 +265,7 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 | `langchain_core.tools.@tool` | ✅ | Khai báo `search_docs` từ 1 hàm Python — schema sinh tự động, gọn hơn viết JSON schema tay. |
 | `langchain_openai.ChatOpenAI` | ✅ | Chat model + function calling qua `base_url` cấu hình được (OpenAI/OpenRouter/compatible). |
 | `langchain_text_splitters` | ✅ | `MarkdownHeaderTextSplitter` + `RecursiveCharacterTextSplitter` cho chunking theo cấu trúc — chuẩn, ít code, dễ giải thích tham số. |
-| Vector store abstraction của LangChain | ❌ | sqlite-vec không phải store first-class; hybrid retrieval + RRF là phần tự viết — giữ `store.py`/`retrieve.py` thuần Python để kiểm soát và giải thích được. |
+| Vector store abstraction của LangChain | ❌ | sqlite-vec không phải store first-class; hybrid retrieval + RRF là phần tự viết — giữ tầng truy vấn (`repositories/`) và `retrieval.py` thuần Python để kiểm soát và giải thích được. |
 | **LangSmith** | ✅ | Tracing qua env `LANGSMITH_API_KEY`/`LANGSMITH_TRACING`; `observability/tracing.py` cung cấp client factory lazy (warn-once khi thiếu key), metadata per-invocation và submit feedback scores (invalid_citations/unsupported_claims/low_confidence) lên root run. Không cấu hình → no-op an toàn. |
 
 **Tracing + feedback qua LangSmith** (`observability/tracing.py`): mỗi lần `ask`/`ask_stream` chạy trong một trace (metadata: conversation_id/streamed, tags: sync/stream); `Retriever.search` và tool `search_docs` được decorate `@traceable` tạo child spans; cuối lượt service submit 3 feedback scores lên root run: `invalid_citations` (số cite sai), `unsupported_claims` (số claim thiếu đỡ), `low_confidence` (0/1). Không có `LANGSMITH_API_KEY`/`LANGSMITH_TRACING` thì toàn bộ là no-op an toàn (warn 1 lần nếu bật tracing mà thiếu key). Vẫn giữ `payload_json` trong SQLite cho UI replay lịch sử hội thoại.
@@ -307,7 +307,8 @@ chakra_rag/
 │   ├── core/                    # nghiệp vụ lõi: chunking, embedding, retrieval, verify, security
 │   ├── agent/                   # lớp LLM orchestration: agent.py (vòng lặp LangGraph), llm.py
 │   │   └── tools/               #   tool registry (@register_tool → build_tools); thêm tool mới ở đây
-│   ├── storage/store.py         # SQLite (chunks + vec0 + FTS5 + files + conversations + llm_integrations)
+│   ├── storage/                 # storage/schema.py: DDL bảng + index; storage/connection.py: Database (connection duy nhất + RLock)
+│   ├── repositories/            #   truy vấn SQL theo domain: chunk (vec0+FTS5), file, conversation, integration
 │   ├── ingestion/worker.py      # worker nền: parse → chunk → embed, cập nhật tiến trình
 │   ├── service/                 # domain services (chat, conversation, file, integration) + container
 │   │   ├── container.py         #   ServiceContainer: composition root & dependency container
@@ -360,7 +361,7 @@ Nguyên tắc: **phần lõi xong trước, UI làm sau cùng**. Nếu chậm ti
 - Tài liệu đầu vào dạng text/markdown sạch (không xử lý PDF scan, bảng biểu phức tạp).
 
 **Rủi ro kỹ thuật & cách xử lý:**
-- sqlite-vec cần load extension → dùng package `sqlite-vec` chính chủ (bundle wheel Linux x64), gói gọn trong `store.py`, có test smoke để phát hiện sớm.
+- sqlite-vec cần load extension → dùng package `sqlite-vec` chính chủ (bundle wheel Linux x64), gói gọn trong `storage/connection.py`, có test smoke để phát hiện sớm.
 - FTS5 tokenizer không tách từ tiếng Việt → chấp nhận ở mức exact-term, ghi vào hạn chế; hướng mở rộng: tiền xử lý bằng `underthesea`.
 - LLM trả lời sai format JSON → parse có fallback (regex kéo JSON), retry 1 lần; fail nữa thì trả về raw + cờ lỗi.
 - Model không hỗ trợ function calling tốt (nhất là model local nhỏ) → hệ thống yêu cầu model có tool-call (OpenAI-compatible: GPT-4o-mini, Qwen...); không có fallback khác.

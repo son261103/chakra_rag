@@ -1,4 +1,4 @@
-"""Ingest: parse file → chunk → embed → ghi vào Store, có tiến trình.
+"""Ingest: parse file → chunk → embed → ghi vào database (qua repository), có tiến trình.
 
 Chạy trong worker nền 1 thread (queue + thread) để:
 - tránh ghi SQLite đồng thời,
@@ -22,7 +22,7 @@ from pathlib import Path
 from config import Config
 from core.chunking import Chunk, chunk_markdown, chunk_plain_text
 from core.embedding import Embedder
-from storage.store import Store
+from repositories import ChunkRepository, FileRepository
 
 logger = logging.getLogger(__name__)
 
@@ -121,9 +121,16 @@ def extract_text(path: Path) -> str:
 class IngestWorker:
     """Hàng đợi ingest chạy nền, 1 thread."""
 
-    def __init__(self, cfg: Config, store: Store, embedder: Embedder):
+    def __init__(
+        self,
+        cfg: Config,
+        file_repo: FileRepository,
+        chunk_repo: ChunkRepository,
+        embedder: Embedder,
+    ):
         self.cfg = cfg
-        self.store = store
+        self.file_repo = file_repo
+        self.chunk_repo = chunk_repo
         self.embedder = embedder
         self._queue: queue.Queue[Path] = queue.Queue()
         self._thread: threading.Thread | None = None
@@ -144,7 +151,7 @@ class IngestWorker:
     def enqueue(self, path: Path, source: str = "upload") -> str:
         """Đăng ký file vào bảng files và đưa vào hàng đợi. Trả về file_id."""
         fid = file_id_for(path)
-        self.store.upsert_file(fid, path.name, source=source, status="queued")
+        self.file_repo.upsert_file(fid, path.name, source=source, status="queued")
         self._queue.put_nowait(path)
         logger.info("enqueue file_id=%s name=%s source=%s path=%s", fid, path.name, source, path)
         return fid
@@ -165,7 +172,7 @@ class IngestWorker:
 
     def requeue_file_id(self, file_id: str) -> dict:
         """Xếp hàng nhúng lại 1 file đã có trong bảng files. Raise ValueError nếu không được."""
-        meta = self.store.get_file(file_id)
+        meta = self.file_repo.get_file(file_id)
         if meta is None:
             raise ValueError(f"Không tìm thấy file_id={file_id}")
         name = meta["name"]
@@ -190,7 +197,7 @@ class IngestWorker:
         """Nhúng lại mọi file còn trên đĩa trong bảng files. Bỏ qua file mất path."""
         queued: list[dict] = []
         skipped: list[dict] = []
-        for meta in self.store.list_files():
+        for meta in self.file_repo.list_files():
             name = meta["name"]
             source = meta.get("source") or "upload"
             path = self.resolve_path(name, source)
@@ -209,13 +216,13 @@ class IngestWorker:
 
     def delete_file(self, file_id: str, remove_disk: bool = True) -> dict:
         """Xóa index + (mặc định) file trên đĩa uploads/docs. Không tự ingest gì cả."""
-        meta = self.store.get_file(file_id)
+        meta = self.file_repo.get_file(file_id)
         if meta is None:
             raise ValueError(f"Không tìm thấy file_id={file_id}")
         name = meta["name"]
         source = meta.get("source") or "upload"
         path = self.resolve_path(name, source)
-        deleted = self.store.delete_file(file_id)
+        deleted = self.file_repo.delete_file(file_id)
         disk_removed = False
         if remove_disk and path is not None and path.is_file():
             # Chỉ xóa trong uploads_dir / docs_dir đã cấu hình — không đụng path lạ.
@@ -243,7 +250,7 @@ class IngestWorker:
 
     def progress(self) -> dict:
         """Tiến trình tổng hợp cho UI."""
-        files = self.store.list_files()
+        files = self.file_repo.list_files()
         total = sum(f["chunks_total"] for f in files)
         done = sum(f["chunks_done"] for f in files)
         statuses = {f["status"] for f in files}
@@ -287,7 +294,7 @@ class IngestWorker:
                     err,
                     traceback.format_exc(),
                 )
-                self.store.set_file_status(fid, "failed", error=err)
+                self.file_repo.set_file_status(fid, "failed", error=err)
         logger.info("ingest worker stopped")
 
     def _process_file(self, path: Path) -> None:
@@ -296,11 +303,11 @@ class IngestWorker:
         t0 = time.perf_counter()
         logger.info("ingest START file_id=%s name=%s suffix=%s", fid, doc_name, path.suffix.lower())
 
-        self.store.set_file_status(fid, "parsing")
+        self.file_repo.set_file_status(fid, "parsing")
         text = extract_text(path)
         logger.info("ingest parsed file_id=%s chars=%d", fid, len(text))
 
-        self.store.set_file_status(fid, "chunking")
+        self.file_repo.set_file_status(fid, "chunking")
         suffix = path.suffix.lower()
         # PDF/CV: chunk lớn hơn một chút + section theo heading ALL-CAPS (trong chunk_plain_text)
         if suffix == ".pdf":
@@ -321,10 +328,10 @@ class IngestWorker:
         logger.info("ingest chunked file_id=%s n_chunks=%d", fid, len(numbered))
 
         # Ingest lại: xóa chunk cũ của file này trước (idempotent)
-        deleted = self.store.delete_chunks_by_doc(doc_name)
+        deleted = self.chunk_repo.delete_chunks_by_doc(doc_name)
         if deleted:
             logger.info("ingest deleted old chunks file_id=%s removed=%d", fid, deleted)
-        self.store.upsert_file(fid, doc_name, status="embedding", chunks_total=len(numbered))
+        self.file_repo.upsert_file(fid, doc_name, status="embedding", chunks_total=len(numbered))
 
         done = 0
         batch_size = self.cfg.embed_batch_size
@@ -332,7 +339,7 @@ class IngestWorker:
             batch = numbered[batch_start : batch_start + batch_size]
             vectors = self.embedder.embed([c.text for _, c in batch])
             for (chunk_id, chunk), vector in zip(batch, vectors, strict=False):
-                self.store.insert_chunk(
+                self.chunk_repo.insert_chunk(
                     chunk_id=chunk_id,
                     doc=chunk.doc,
                     section=chunk.section,
@@ -342,7 +349,7 @@ class IngestWorker:
                     embedding=vector,
                 )
             done += len(batch)
-            self.store.set_file_progress(fid, done)
+            self.file_repo.set_file_progress(fid, done)
             logger.debug(
                 "ingest embed progress file_id=%s %d/%d",
                 fid,
@@ -350,7 +357,7 @@ class IngestWorker:
                 len(numbered),
             )
 
-        self.store.set_file_status(fid, "ready")
+        self.file_repo.set_file_status(fid, "ready")
         ms = int((time.perf_counter() - t0) * 1000)
         logger.info(
             "ingest READY file_id=%s name=%s chunks=%d latency_ms=%d",

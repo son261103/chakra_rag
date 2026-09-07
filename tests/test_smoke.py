@@ -1,6 +1,6 @@
 """Smoke tests: chạy không cần LLM, chỉ cần embedding model (tải 1 lần).
 
-Test các tầng tự viết: chunking, store (sqlite-vec + FTS5), retrieve (RRF),
+Test các tầng tự viết: chunking, lưu trữ (sqlite-vec + FTS5 qua repository), retrieve (RRF),
 verify (citation check), ingest. Đây là phần nghiệp vụ chấm điểm nên phải có test.
 """
 
@@ -33,7 +33,8 @@ from core.verification import (  # noqa: E402
     verify_answer,
 )
 from ingestion.worker import _assign_chunk_ids  # noqa: E402
-from storage.store import Store  # noqa: E402
+from repositories import ChunkRepository, FileRepository  # noqa: E402
+from storage.connection import Database  # noqa: E402
 
 EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
@@ -58,10 +59,20 @@ def embedder() -> Embedder:
 
 
 @pytest.fixture
-def store(tmp_path, embedder) -> Store:
-    s = Store(tmp_path / "test.db", embed_dim=embedder.dim)
-    yield s
-    s.close()
+def db(tmp_path, embedder) -> Database:
+    database = Database(tmp_path / "test.db", embed_dim=embedder.dim)
+    yield database
+    database.close()
+
+
+@pytest.fixture
+def chunks(db) -> ChunkRepository:
+    return ChunkRepository(db)
+
+
+@pytest.fixture
+def files(db) -> FileRepository:
+    return FileRepository(db)
 
 
 # ---------- chunking ----------
@@ -82,39 +93,39 @@ def test_chunk_ids_are_stable_and_unique():
     assert all("#" in cid for cid in ids)
 
 
-# ---------- store ----------
+# ---------- repositories ----------
 
-def test_store_roundtrip_and_search(store, embedder):
-    chunks = chunk_markdown(SAMPLE_MD, "test.md")
-    vectors = embedder.embed([c.text for c in chunks])
-    for (cid, chunk), vec in zip(_assign_chunk_ids(chunks), vectors, strict=False):
-        store.insert_chunk(cid, chunk.doc, chunk.section, chunk.text,
+def test_store_roundtrip_and_search(chunks, embedder):
+    parts = chunk_markdown(SAMPLE_MD, "test.md")
+    vectors = embedder.embed([c.text for c in parts])
+    for (cid, chunk), vec in zip(_assign_chunk_ids(parts), vectors, strict=False):
+        chunks.insert_chunk(cid, chunk.doc, chunk.section, chunk.text,
                            chunk.char_start, chunk.char_end, vec)
 
-    assert store.count_chunks() == len(chunks)
+    assert chunks.count_chunks() == len(parts)
 
     # vector search
-    hits = store.vector_search(embedder.embed_one("nghỉ phép bao nhiêu ngày"), top_k=3)
+    hits = chunks.vector_search(embedder.embed_one("nghỉ phép bao nhiêu ngày"), top_k=3)
     assert hits
     assert 0.0 <= hits[0]["score"] <= 1.0
     assert hits[0]["chunk_id"]
 
     # fts search — exact term
-    fts_hits = store.fts_search("12 ngày phép", top_k=3)
+    fts_hits = chunks.fts_search("12 ngày phép", top_k=3)
     assert fts_hits
     assert "12 ngày phép" in fts_hits[0]["text"]
 
     # get_chunk
-    chunk = store.get_chunk(hits[0]["chunk_id"])
+    chunk = chunks.get_chunk(hits[0]["chunk_id"])
     assert chunk and chunk["doc"] == "test.md"
 
 
-def test_delete_chunks_by_doc(store, embedder):
+def test_delete_chunks_by_doc(chunks, embedder):
     vec = embedder.embed_one("nội dung mẫu")
-    store.insert_chunk("a#s#0", "a.md", "s", "nội dung mẫu", 0, 10, vec)
-    assert store.count_chunks() == 1
-    store.delete_chunks_by_doc("a.md")
-    assert store.count_chunks() == 0
+    chunks.insert_chunk("a#s#0", "a.md", "s", "nội dung mẫu", 0, 10, vec)
+    assert chunks.count_chunks() == 1
+    chunks.delete_chunks_by_doc("a.md")
+    assert chunks.count_chunks() == 0
 
 
 # ---------- retrieve ----------
@@ -127,14 +138,14 @@ def test_rrf_fusion_ranks_consensus_first():
     assert fused[0]["chunk_id"] == "x"  # xuất hiện ở cả 2 danh sách
 
 
-def test_retriever_returns_result_with_confidence(store, embedder):
-    chunks = chunk_markdown(SAMPLE_MD, "test.md")
-    vectors = embedder.embed([c.text for c in chunks])
-    for (cid, chunk), vec in zip(_assign_chunk_ids(chunks), vectors, strict=False):
-        store.insert_chunk(cid, chunk.doc, chunk.section, chunk.text,
+def test_retriever_returns_result_with_confidence(chunks, embedder):
+    parts = chunk_markdown(SAMPLE_MD, "test.md")
+    vectors = embedder.embed([c.text for c in parts])
+    for (cid, chunk), vec in zip(_assign_chunk_ids(parts), vectors, strict=False):
+        chunks.insert_chunk(cid, chunk.doc, chunk.section, chunk.text,
                            chunk.char_start, chunk.char_end, vec)
 
-    retriever = Retriever(store, embedder, top_k=3, min_score=0.25)
+    retriever = Retriever(chunks, embedder, top_k=3, min_score=0.25)
     result = retriever.search("nhân viên được nghỉ bao nhiêu ngày phép mỗi năm")
     assert result.chunks
     assert result.max_score > 0.25
@@ -144,10 +155,10 @@ def test_retriever_returns_result_with_confidence(store, embedder):
 
 # ---------- agent tools ----------
 
-def test_build_tools_registry_wires_all_tools(store, embedder):
+def test_build_tools_registry_wires_all_tools(chunks, embedder):
     """build_tools tự nhận mọi tool đăng ký trong agent/tools (registry)."""
-    retriever = Retriever(store, embedder, top_k=3, min_score=0.25)
-    tools = build_tools(ToolDeps(retriever=retriever, store=store))
+    retriever = Retriever(chunks, embedder, top_k=3, min_score=0.25)
+    tools = build_tools(ToolDeps(retriever=retriever, chunk_repo=chunks))
     by_name = {t.name: t for t in tools}
     assert {"search_docs", "read_chunk", "list_documents"} <= set(by_name)
     # `config` xuất hiện trong schema do @traceable wrap thêm param (hành vi có sẵn).
@@ -169,9 +180,9 @@ class _StubRetriever:
         return RetrievalResult(chunks=[chunk], max_score=0.7, low_confidence=False)
 
 
-def test_search_docs_returns_pointer_payload(store, embedder):
+def test_search_docs_returns_pointer_payload():
     """search_docs pointer-first: chỉ excerpt rút gọn + chunk_id, không full text."""
-    tools = build_tools(ToolDeps(retriever=_StubRetriever(), store=store))
+    tools = build_tools(ToolDeps(retriever=_StubRetriever()))
     search_docs = next(t for t in tools if t.name == "search_docs")
 
     payload = json.loads(search_docs.invoke({"query": "gì đó", "top_k": 1}))
@@ -182,7 +193,7 @@ def test_search_docs_returns_pointer_payload(store, embedder):
     assert payload[0]["excerpt"].endswith("…")
 
 
-def test_read_chunk_tool_returns_chunk_with_neighbors(store, embedder):
+def test_read_chunk_tool_returns_chunk_with_neighbors(chunks, embedder):
     """read_chunk trả chunk chính + đúng 1 chunk kề trước/sau trong cùng doc."""
     texts = [
         ("doc#s#0", 0, "Đoạn đầu."),
@@ -191,7 +202,7 @@ def test_read_chunk_tool_returns_chunk_with_neighbors(store, embedder):
         ("other#x#0", 0, "Tài liệu khác."),
     ]
     for cid, start, text in texts:
-        store.insert_chunk(
+        chunks.insert_chunk(
             cid,
             "doc.md" if cid.startswith("doc#") else "other.md",
             "s",
@@ -200,8 +211,8 @@ def test_read_chunk_tool_returns_chunk_with_neighbors(store, embedder):
             start + len(text),
             embedder.embed_one(text),
         )
-    retriever = Retriever(store, embedder, top_k=3, min_score=0.25)
-    tools = build_tools(ToolDeps(retriever=retriever, store=store))
+    retriever = Retriever(chunks, embedder, top_k=3, min_score=0.25)
+    tools = build_tools(ToolDeps(retriever=retriever, chunk_repo=chunks))
     read_chunk = next(t for t in tools if t.name == "read_chunk")
 
     payload = json.loads(read_chunk.invoke({"chunk_id": "doc#s#1"}))
@@ -218,10 +229,12 @@ def test_read_chunk_tool_returns_chunk_with_neighbors(store, embedder):
     assert "error" in missing
 
 
-def test_list_documents_tool_lists_files(store, embedder):
-    store.upsert_file("f1", "cv.md", source="seed", status="ready", chunks_total=3)
-    retriever = Retriever(store, embedder, top_k=3, min_score=0.25)
-    tools = build_tools(ToolDeps(retriever=retriever, store=store))
+def test_list_documents_tool_lists_files(chunks, files, embedder):
+    files.upsert_file("f1", "cv.md", source="seed", status="ready", chunks_total=3)
+    retriever = Retriever(chunks, embedder, top_k=3, min_score=0.25)
+    tools = build_tools(
+        ToolDeps(retriever=retriever, chunk_repo=chunks, file_repo=files)
+    )
     list_documents = next(t for t in tools if t.name == "list_documents")
 
     docs = json.loads(list_documents.invoke({}))
@@ -283,9 +296,9 @@ def test_tool_trace_and_evidence_multi_tool():
     assert set(evidence) == {"s#0", "s#b", "s#a"}
 
 
-def test_hydrate_evidence_replaces_excerpt_with_full_text(store, embedder):
-    """Evidence từ search_docs (excerpt) được nạp full text từ store; id lạ không được thêm."""
-    store.insert_chunk(
+def test_hydrate_evidence_replaces_excerpt_with_full_text(chunks, embedder):
+    """Evidence từ search_docs (excerpt) được nạp full text từ chunk repo; id lạ không được thêm."""
+    chunks.insert_chunk(
         "doc#s#0", "doc.md", "s", "Nội dung đầy đủ của đoạn.", 0, 26,
         embedder.embed_one("nội dung"),
     )
@@ -298,14 +311,14 @@ def test_hydrate_evidence_replaces_excerpt_with_full_text(store, embedder):
             "excerpt": "Nội dung đầy đủ…",
         }
     }
-    hydrated = _hydrate_evidence(evidence, store)
+    hydrated = _hydrate_evidence(evidence, chunks)
     assert hydrated["doc#s#0"]["text"] == "Nội dung đầy đủ của đoạn."
     assert "excerpt" not in hydrated["doc#s#0"]
 
-    # Chunk đã có text đầy đủ (từ read_chunk) → giữ nguyên, không đụng store.
+    # Chunk đã có text đầy đủ (từ read_chunk) → giữ nguyên, không đụng repo.
     full = {"doc#s#0": {"chunk_id": "doc#s#0", "doc": "doc.md", "text": "đã đủ"}}
-    assert _hydrate_evidence(full, store) is full
-    # Store None (agent khởi tạo không kèm store) → trả nguyên vẹn.
+    assert _hydrate_evidence(full, chunks) is full
+    # Repo None (agent khởi tạo không kèm chunk repo) → trả nguyên vẹn.
     assert _hydrate_evidence(evidence, None) is evidence
 
 

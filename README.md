@@ -151,7 +151,8 @@ src/
   agent/         # lớp LLM orchestration: agent (vòng lặp LangGraph), llm, tools/ (mỗi tool một file)
   api/           # fastapi app + modular routers (chat, files, conversations, integrations, health)
   core/          # domain RAG: chunking, embedding, retrieval, verification, security (KEK/DEK)
-  storage/       # SQLite store (chunks, vec0, fts5, files, conversations, llm_integrations)
+  storage/       # SQLite: schema.py (DDL) + connection.py (Database, connection duy nhất)
+  repositories/  # truy vấn SQL theo domain (chunk/search, file, conversation, integration)
   ingestion/     # worker ingest
   service/       # domain services (chat, conversation, file, integration) + container
   observability/ # langsmith tracing + timing helpers
@@ -215,7 +216,8 @@ chakra_rag/
 │   ├── agent/                # LLM orchestration: agent, llm, tools/
 │   ├── api/                  # FastAPI app + routes/
 │   ├── core/                 # domain RAG: chunking, embedding, retrieval, verification, security
-│   ├── storage/              # SQLite store
+│   ├── storage/              # schema (DDL) + connection (Database SQLite duy nhất)
+│   ├── repositories/         # truy vấn SQL theo domain: chunk, file, conversation, integration
 │   ├── ingestion/            # worker ingest
 │   ├── service/              # domain services + container
 │   └── observability/        # LangSmith tracing

@@ -17,7 +17,7 @@ from typing import Any
 from config import Config, get_config
 from core.security import decrypt_integration_key, encrypt_integration_key, mask_api_key
 from observability.timing import elapsed_ms, timed
-from storage.store import Store
+from repositories import IntegrationRepository
 
 logger = logging.getLogger(__name__)
 
@@ -27,22 +27,22 @@ class IntegrationService:
 
     def __init__(
         self,
-        store: Store,
+        repo: IntegrationRepository,
         cfg: Config | None = None,
         on_change: Callable[[], None] | None = None,
     ):
-        self.store = store
+        self.repo = repo
         self.cfg = cfg or get_config()
         self.on_change = on_change
 
     def ensure_default_integration(self) -> None:
         """Nếu DB chưa có tích hợp nào, khởi tạo cấu hình mặc định vào database."""
         try:
-            if self.store.count_integrations() == 0:
+            if self.repo.count_integrations() == 0:
                 model_name = self.cfg.llm_model or "gpt-4o-mini"
                 base_url = self.cfg.llm_base_url or "https://api.openai.com/v1"
                 enc = encrypt_integration_key(self.cfg.llm_api_key, self.cfg.encryption_key)
-                self.store.create_integration(
+                self.repo.create_integration(
                     name="OpenAI (Mặc định)",
                     model=model_name,
                     base_url=base_url,
@@ -81,11 +81,11 @@ class IntegrationService:
         }
 
     def list_integrations(self) -> list[dict[str, Any]]:
-        rows = self.store.list_integrations()
+        rows = self.repo.list_integrations()
         return [self.format_item(r) for r in rows]
 
     def get_active_integration_info(self) -> dict[str, Any]:
-        active = self.store.get_active_integration()
+        active = self.repo.get_active_integration()
         if not active:
             return {
                 "id": "env-fallback",
@@ -109,7 +109,7 @@ class IntegrationService:
         is_active: bool = False,
     ) -> dict[str, Any]:
         enc = encrypt_integration_key(api_key, self.cfg.encryption_key)
-        created = self.store.create_integration(
+        created = self.repo.create_integration(
             name=name,
             model=model,
             base_url=base_url,
@@ -139,7 +139,7 @@ class IntegrationService:
             enc_key = enc.encrypted_api_key
             enc_dek = enc.encrypted_dek
 
-        updated = self.store.update_integration(
+        updated = self.repo.update_integration(
             integration_id=integration_id,
             name=name,
             model=model,
@@ -156,13 +156,13 @@ class IntegrationService:
         return self.format_item(updated)
 
     def delete_integration(self, integration_id: str) -> bool:
-        deleted = self.store.delete_integration(integration_id)
+        deleted = self.repo.delete_integration(integration_id)
         if deleted and self.on_change:
             self.on_change()
         return deleted
 
     def activate_integration(self, integration_id: str) -> dict[str, Any] | None:
-        activated = self.store.set_active_integration(integration_id)
+        activated = self.repo.set_active_integration(integration_id)
         if not activated:
             return None
         if self.on_change:
@@ -180,7 +180,7 @@ class IntegrationService:
 
         resolved_key = api_key
         if not resolved_key and integration_id:
-            item = self.store.get_integration(integration_id)
+            item = self.repo.get_integration(integration_id)
             if item:
                 resolved_key = decrypt_integration_key(
                     item.get("encrypted_api_key", ""),

@@ -1,12 +1,13 @@
-"""Unit tests cho các hàm lưu trữ tích hợp LLM trong Store."""
+"""Unit tests cho repository llm_integrations (cấu hình tích hợp LLM)."""
 from __future__ import annotations
 
 from core.security import encrypt_integration_key
-from storage.store import Store
+from repositories import IntegrationRepository
+from storage.connection import Database
 
 
 def test_create_and_list_integrations(tmp_path):
-    store = Store(tmp_path / "store.db", embed_dim=4)
+    store = IntegrationRepository(Database(tmp_path / "store.db", embed_dim=4))
     assert store.count_integrations() == 0
 
     enc = encrypt_integration_key("sk-test-key", "my-kek")
@@ -48,7 +49,7 @@ def test_create_and_list_integrations(tmp_path):
 
 
 def test_update_and_delete_integration(tmp_path):
-    store = Store(tmp_path / "store.db", embed_dim=4)
+    store = IntegrationRepository(Database(tmp_path / "store.db", embed_dim=4))
     item = store.create_integration(
         name="Model A",
         model="gpt-3.5-turbo",

@@ -1,5 +1,8 @@
 """Composition root & container: khởi tạo hạ tầng và liên kết các domain service.
 
+Tầng dữ liệu: `Database` (storage/connection.py) giữ connection duy nhất; các
+repository (repositories/) chứa truy vấn SQL theo domain, được wire vào service.
+
 Các domain service chuyên biệt:
 - `chat`: ChatService (RAG agent loop, retrieval, verification, streaming)
 - `conversations`: ConversationService (lịch sử, tin nhắn, auto-titling)
@@ -15,11 +18,17 @@ from core.embedding import Embedder
 from core.retrieval import Retriever
 from ingestion.worker import IngestWorker
 from observability.tracing import submit_feedback  # noqa: F401
+from repositories import (
+    ChunkRepository,
+    ConversationRepository,
+    FileRepository,
+    IntegrationRepository,
+)
 from service.chat_service import ChatService
 from service.conversation_service import ConversationService
 from service.file_service import FileService
 from service.integration_service import IntegrationService
-from storage.store import Store
+from storage.connection import Database
 
 
 class ServiceContainer:
@@ -29,34 +38,45 @@ class ServiceContainer:
         self.cfg = cfg or get_config()
         self.cfg.ensure_dirs()
         self.embedder = Embedder(self.cfg.embed_model)
-        self.store = Store(self.cfg.db_path, embed_dim=self.embedder.dim)
+        # Database sở hữu connection duy nhất + schema; repositories chứa truy vấn theo domain.
+        self.db = Database(self.cfg.db_path, embed_dim=self.embedder.dim)
+        self.chunk_repo = ChunkRepository(self.db)
+        self.file_repo = FileRepository(self.db)
+        self.conversation_repo = ConversationRepository(self.db)
+        self.integration_repo = IntegrationRepository(self.db)
         self.worker = worker
 
         # 1. Integration Service (quản lý model & API key)
         self.integrations = IntegrationService(
-            self.store, self.cfg, on_change=self.reload_agent
+            self.integration_repo, self.cfg, on_change=self.reload_agent
         )
         self.integrations.ensure_default_integration()
 
         # 2. Retrieval & Agent
         self.retriever = Retriever(
-            self.store,
+            self.chunk_repo,
             self.embedder,
             top_k=self.cfg.top_k,
             rrf_k=self.cfg.rrf_k,
             min_score=self.cfg.min_score,
         )
-        self.agent = RagAgent(self.cfg, self.retriever, store=self.store)
+        self.agent = RagAgent(
+            self.cfg,
+            self.retriever,
+            chunk_repo=self.chunk_repo,
+            file_repo=self.file_repo,
+            integration_repo=self.integration_repo,
+        )
 
         # 3. Conversation Service
-        self.conversations = ConversationService(self.store, self.cfg)
+        self.conversations = ConversationService(self.conversation_repo, self.cfg)
 
         # 4. File Service
-        self.files = FileService(self.store, self.worker, self.cfg)
+        self.files = FileService(self.file_repo, self.chunk_repo, self.worker, self.cfg)
 
         # 5. Chat Service (RAG execution)
         self.chat = ChatService(
-            self.store,
+            self.chunk_repo,
             self.retriever,
             self.agent,
             self.conversations,
@@ -72,5 +92,5 @@ class ServiceContainer:
         self.agent.invalidate_agent()
 
     def close(self) -> None:
-        self.store.close()
+        self.db.close()
 
