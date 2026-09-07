@@ -1,12 +1,15 @@
 """Truy vấn `conversations` + `messages`: lịch sử hội thoại (payload JSON cho UI replay).
 
-DDL tương ứng nằm ở storage/schema.py.
+SQLAlchemy Core; bảng reflect từ DB (schema.py là nguồn DDL duy nhất).
 """
 
 from __future__ import annotations
 
 import json
 from typing import Any
+
+from sqlalchemy import MetaData, Table, delete, func, insert, select, update
+from sqlalchemy import text as sql_text
 
 from repositories.common import new_id, utcnow_iso
 from storage.connection import Database
@@ -17,70 +20,77 @@ class ConversationRepository:
 
     def __init__(self, db: Database):
         self.db = db
+        meta = MetaData()
+        self.conversations = Table("conversations", meta, autoload_with=db.engine)
+        self.messages = Table("messages", meta, autoload_with=db.engine)
 
     # ---------- conversations ----------
 
     def create_conversation(self, title: str = "Hội thoại mới") -> dict[str, Any]:
         cid = new_id()
         now = utcnow_iso()
-        with self.db.lock:
-            self.db.conn.execute(
-                "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                (cid, title, now, now),
+        with self.db.engine.begin() as conn:
+            conn.execute(
+                insert(self.conversations).values(
+                    id=cid, title=title, created_at=now, updated_at=now
+                )
             )
-            self.db.conn.commit()
         return {"id": cid, "title": title, "created_at": now, "updated_at": now}
 
     def list_conversations(self) -> list[dict[str, Any]]:
-        with self.db.lock:
-            rows = self.db.conn.execute(
-                """
-                SELECT c.id, c.title, c.created_at, c.updated_at,
-                       (SELECT COUNT(*) FROM messages m
-                        WHERE m.conversation_id = c.id) AS message_count
-                FROM conversations c
-                ORDER BY c.updated_at DESC
-                """
-            ).fetchall()
+        message_count = (
+            select(func.count())
+            .select_from(self.messages)
+            .where(self.messages.c.conversation_id == self.conversations.c.id)
+            .scalar_subquery()
+            .label("message_count")
+        )
+        stmt = (
+            select(
+                self.conversations.c.id,
+                self.conversations.c.title,
+                self.conversations.c.created_at,
+                self.conversations.c.updated_at,
+                message_count,
+            )
+            .order_by(self.conversations.c.updated_at.desc())
+        )
+        with self.db.engine.connect() as conn:
+            rows = conn.execute(stmt).mappings().all()
         return [dict(row) for row in rows]
 
     def get_conversation(self, conversation_id: str) -> dict[str, Any] | None:
-        with self.db.lock:
-            row = self.db.conn.execute(
-                "SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?",
-                (conversation_id,),
-            ).fetchone()
+        stmt = (
+            select(
+                self.conversations.c.id,
+                self.conversations.c.title,
+                self.conversations.c.created_at,
+                self.conversations.c.updated_at,
+            )
+            .where(self.conversations.c.id == conversation_id)
+        )
+        with self.db.engine.connect() as conn:
+            row = conn.execute(stmt).mappings().first()
         return dict(row) if row else None
 
     def rename_conversation(self, conversation_id: str, title: str) -> None:
-        now = utcnow_iso()
-        with self.db.lock:
-            self.db.conn.execute(
-                "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?",
-                (title, now, conversation_id),
+        with self.db.engine.begin() as conn:
+            conn.execute(
+                update(self.conversations)
+                .where(self.conversations.c.id == conversation_id)
+                .values(title=title, updated_at=utcnow_iso())
             )
-            self.db.conn.commit()
-
-    def touch_conversation(self, conversation_id: str) -> None:
-        now = utcnow_iso()
-        with self.db.lock:
-            self.db.conn.execute(
-                "UPDATE conversations SET updated_at = ? WHERE id = ?",
-                (now, conversation_id),
-            )
-            self.db.conn.commit()
 
     def delete_conversation(self, conversation_id: str) -> bool:
-        with self.db.lock:
+        with self.db.engine.begin() as conn:
             # SQLite FK cascade cần PRAGMA; xóa messages thủ công cho chắc.
-            self.db.conn.execute(
-                "DELETE FROM messages WHERE conversation_id = ?", (conversation_id,)
+            conn.execute(
+                delete(self.messages).where(self.messages.c.conversation_id == conversation_id)
             )
-            cur = self.db.conn.execute(
-                "DELETE FROM conversations WHERE id = ?", (conversation_id,)
+            result = conn.execute(
+                delete(self.conversations).where(self.conversations.c.id == conversation_id)
             )
-            self.db.conn.commit()
-            return cur.rowcount > 0
+        return result.rowcount > 0
 
     # ---------- messages ----------
 
@@ -94,19 +104,22 @@ class ConversationRepository:
         mid = new_id()
         now = utcnow_iso()
         payload_json = json.dumps(payload, ensure_ascii=False) if payload is not None else None
-        with self.db.lock:
-            self.db.conn.execute(
-                """
-                INSERT INTO messages (id, conversation_id, role, content, payload_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (mid, conversation_id, role, content, payload_json, now),
+        with self.db.engine.begin() as conn:
+            conn.execute(
+                insert(self.messages).values(
+                    id=mid,
+                    conversation_id=conversation_id,
+                    role=role,
+                    content=content,
+                    payload_json=payload_json,
+                    created_at=now,
+                )
             )
-            self.db.conn.execute(
-                "UPDATE conversations SET updated_at = ? WHERE id = ?",
-                (now, conversation_id),
+            conn.execute(
+                update(self.conversations)
+                .where(self.conversations.c.id == conversation_id)
+                .values(updated_at=now)
             )
-            self.db.conn.commit()
         return {
             "id": mid,
             "conversation_id": conversation_id,
@@ -117,16 +130,20 @@ class ConversationRepository:
         }
 
     def list_messages(self, conversation_id: str) -> list[dict[str, Any]]:
-        with self.db.lock:
-            rows = self.db.conn.execute(
-                """
-                SELECT id, conversation_id, role, content, payload_json, created_at
-                FROM messages
-                WHERE conversation_id = ?
-                ORDER BY created_at ASC, rowid ASC
-                """,
-                (conversation_id,),
-            ).fetchall()
+        stmt = (
+            select(
+                self.messages.c.id,
+                self.messages.c.conversation_id,
+                self.messages.c.role,
+                self.messages.c.content,
+                self.messages.c.payload_json,
+                self.messages.c.created_at,
+            )
+            .where(self.messages.c.conversation_id == conversation_id)
+            .order_by(self.messages.c.created_at, sql_text("rowid"))
+        )
+        with self.db.engine.connect() as conn:
+            rows = conn.execute(stmt).mappings().all()
         out: list[dict[str, Any]] = []
         for row in rows:
             item = dict(row)

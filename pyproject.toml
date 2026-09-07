@@ -16,6 +16,7 @@ dependencies = [
     "numpy",
     "python-multipart",
     "pypdf",
+    "sqlalchemy",
     # Declared explicitly (previously only transitive / in requirements.txt):
     "openai",        # client SDK used indirectly by langchain-openai; pin visibility
     "pydantic>=2",   # models used by api layer

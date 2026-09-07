@@ -7,11 +7,11 @@ from storage.connection import Database
 
 
 def test_create_and_list_integrations(tmp_path):
-    store = IntegrationRepository(Database(tmp_path / "store.db", embed_dim=4))
-    assert store.count_integrations() == 0
+    repo = IntegrationRepository(Database(tmp_path / "repo.db", embed_dim=4))
+    assert repo.count_integrations() == 0
 
     enc = encrypt_integration_key("sk-test-key", "my-kek")
-    item = store.create_integration(
+    item = repo.create_integration(
         name="OpenAI Test",
         model="gpt-4o-mini",
         base_url="https://api.openai.com/v1",
@@ -23,11 +23,11 @@ def test_create_and_list_integrations(tmp_path):
     # Vì là bản ghi đầu tiên, tự động kích hoạt
     assert item["name"] == "OpenAI Test"
     assert item["is_active"] == 1
-    assert store.count_integrations() == 1
+    assert repo.count_integrations() == 1
 
     # Tạo bản ghi thứ hai với is_active=True
     enc2 = encrypt_integration_key("sk-key-2", "my-kek")
-    item2 = store.create_integration(
+    item2 = repo.create_integration(
         name="DeepSeek Test",
         model="deepseek-v4-flash",
         base_url="https://api.vilao.ai/v1",
@@ -39,23 +39,23 @@ def test_create_and_list_integrations(tmp_path):
     assert item2["is_active"] == 1
 
     # Bản ghi đầu phải trở thành inactive (0)
-    first_updated = store.get_integration(item["id"])
+    first_updated = repo.get_integration(item["id"])
     assert first_updated is not None
     assert first_updated["is_active"] == 0
 
-    active = store.get_active_integration()
+    active = repo.get_active_integration()
     assert active is not None
     assert active["id"] == item2["id"]
 
 
 def test_update_and_delete_integration(tmp_path):
-    store = IntegrationRepository(Database(tmp_path / "store.db", embed_dim=4))
-    item = store.create_integration(
+    repo = IntegrationRepository(Database(tmp_path / "repo.db", embed_dim=4))
+    item = repo.create_integration(
         name="Model A",
         model="gpt-3.5-turbo",
         is_active=True,
     )
-    updated = store.update_integration(
+    updated = repo.update_integration(
         item["id"],
         name="Model A Renamed",
         model="gpt-4o",
@@ -65,10 +65,10 @@ def test_update_and_delete_integration(tmp_path):
     assert updated["model"] == "gpt-4o"
 
     # Tạo thêm item B
-    item_b = store.create_integration(name="Model B", model="model-b", is_active=False)
+    item_b = repo.create_integration(name="Model B", model="model-b", is_active=False)
     # Xóa item active A -> fallback tự động sang item B
-    assert store.delete_integration(item["id"]) is True
-    active = store.get_active_integration()
+    assert repo.delete_integration(item["id"]) is True
+    active = repo.get_active_integration()
     assert active is not None
     assert active["id"] == item_b["id"]
     assert active["is_active"] == 1

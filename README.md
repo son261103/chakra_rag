@@ -70,7 +70,7 @@ Lần đầu chạy embedding model sẽ **tải về máy** (cần mạng). DB 
 uv run pytest tests/ -v        # hoặc (pip-only): PYTHONPATH=src python -m pytest tests/ -v
 ```
 
-Test các tầng tự viết: chunking, store (sqlite-vec + FTS5), retrieve (RRF), citation verify, ingest.
+Test các tầng tự viết: chunking, lưu trữ (sqlite-vec + FTS5 qua repository), retrieve (RRF), citation verify, ingest.
 
 ---
 
@@ -151,8 +151,8 @@ src/
   agent/         # lớp LLM orchestration: agent (vòng lặp LangGraph), llm, tools/ (mỗi tool một file)
   api/           # fastapi app + modular routers (chat, files, conversations, integrations, health)
   core/          # domain RAG: chunking, embedding, retrieval, verification, security (KEK/DEK)
-  storage/       # SQLite: schema.py (DDL) + connection.py (Database, connection duy nhất)
-  repositories/  # truy vấn SQL theo domain (chunk/search, file, conversation, integration)
+  storage/       # SQLite: schema.py (DDL) + connection.py (Database = SQLAlchemy engine)
+  repositories/  # truy vấn theo domain bằng SQLAlchemy Core (chunk/search, file, conversation, integration)
   ingestion/     # worker ingest
   service/       # domain services (chat, conversation, file, integration) + container
   observability/ # langsmith tracing + timing helpers
@@ -216,8 +216,8 @@ chakra_rag/
 │   ├── agent/                # LLM orchestration: agent, llm, tools/
 │   ├── api/                  # FastAPI app + routes/
 │   ├── core/                 # domain RAG: chunking, embedding, retrieval, verification, security
-│   ├── storage/              # schema (DDL) + connection (Database SQLite duy nhất)
-│   ├── repositories/         # truy vấn SQL theo domain: chunk, file, conversation, integration
+│   ├── storage/              # schema (DDL) + connection (Database = SQLAlchemy engine)
+│   ├── repositories/         # truy vấn SQLAlchemy Core theo domain (vec0/FTS5 qua text())
 │   ├── ingestion/            # worker ingest
 │   ├── service/              # domain services + container
 │   └── observability/        # LangSmith tracing

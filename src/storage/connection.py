@@ -1,47 +1,54 @@
-"""Sở hữu connection SQLite duy nhất + serial hóa truy cập.
+"""Sở hữu SQLAlchemy engine cho SQLite + sqlite-vec + FTS5.
 
-Về thread-safety: ingest worker chạy ở thread riêng, FastAPI endpoint chạy ở
-threadpool, tất cả chia sẻ một `Database`. Một connection sqlite3 KHÔNG an toàn
-khi dùng đồng thời từ nhiều thread (kể cả với `check_same_thread=False` — cờ đó
-chỉ tắt kiểm tra, không thêm bảo vệ). Vì vậy mọi thao tác DB phải nằm trong
-`with db.lock:` (RLock để serialize truy cập trên connection duy nhất).
+Thread-safety: mỗi thao tác DB mở một connection riêng qua engine (pool
+`NullPool` — không giữ connection chờ). SQLite tự serialize ghi giữa các
+connection bằng file lock; đặt `timeout=30` để chờ thay vì lỗi "database is
+locked" khi worker ingest và API ghi đồng thời.
 
-Định nghĩa bảng nằm ở `schema.py` — connection chỉ lo mở DB, load extension
-sqlite-vec và chạy schema lúc khởi tạo (IF NOT EXISTS, chạy lại vô hại).
+Điểm đặc thù sqlite-vec: extension phải được load trên TỪNG connection, nên
+đăng ký qua sự kiện `connect` của engine (không chỉ 1 lần như hồi dùng chung
+một connection). FTS5 là extension SQLite nội tại, không cần load.
+
+Schema (storage/schema.py) được chạy đúng 1 lần lúc khởi tạo Database
+(IF NOT EXISTS nên chạy lại vô hại).
 """
 
 from __future__ import annotations
 
-import sqlite3
-import threading
 from pathlib import Path
 
 import sqlite_vec
+from sqlalchemy import URL, create_engine, event
+from sqlalchemy.pool import NullPool
 
 from storage.schema import SCHEMA
 
 
-class Database:
-    """Một connection sqlite3 + sqlite-vec + FTS5, schema tạo sẵn lúc khởi tạo.
+def _load_sqlite_vec(dbapi_conn, _record) -> None:
+    """Load extension sqlite-vec trên connection mới (bắt buộc với NullPool)."""
+    dbapi_conn.enable_load_extension(True)
+    sqlite_vec.load(dbapi_conn)
+    dbapi_conn.enable_load_extension(False)
 
-    Repository nhận `db` này và truy vấn qua `db.conn` (connection duy nhất)
-    bên trong `with db.lock:` — đừng tạo connection thứ hai ở nơi khác.
-    """
+
+class Database:
+    """SQLAlchemy engine SQLite; chạy schema lúc khởi tạo. Repository dùng `db.engine`."""
 
     def __init__(self, db_path: Path | str, embed_dim: int = 384):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        # check_same_thread=False để connection dùng được từ worker thread lẫn
-        # threadpool của FastAPI; an toàn thực sự do RLock bên dưới.
-        self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.lock = threading.RLock()
-        self.conn.enable_load_extension(True)
-        sqlite_vec.load(self.conn)
-        self.conn.enable_load_extension(False)
-        self.conn.executescript(SCHEMA.format(dim=embed_dim))
-        self.conn.commit()
+        url = URL.create("sqlite", database=str(self.db_path))
+        # check_same_thread=False: engine dùng từ worker thread lẫn threadpool FastAPI;
+        # timeout=30s: chờ SQLite lock thay vì fail ngay khi 2 thread ghi đè nhau.
+        self.engine = create_engine(
+            url,
+            connect_args={"check_same_thread": False, "timeout": 30},
+            poolclass=NullPool,
+        )
+        event.listen(self.engine, "connect", _load_sqlite_vec)
+        with self.engine.connect() as conn:
+            conn.connection.driver_connection.executescript(SCHEMA.format(dim=embed_dim))
+            conn.commit()
 
     def close(self) -> None:
-        with self.lock:
-            self.conn.close()
+        self.engine.dispose()

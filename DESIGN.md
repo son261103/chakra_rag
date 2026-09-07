@@ -110,7 +110,7 @@ Vì sao hợp với bài này:
   CREATE VIRTUAL TABLE vec_chunks USING vec0(embedding float[384]);  -- rowid = chunks.id
   CREATE VIRTUAL TABLE fts_chunks USING fts5(text, content='chunks', content_rowid='id');
   ```
-- Lưu ý: `pip sqlite-vec` bundle sẵn extension cho Linux x64; bật/tắt `enable_load_extension` ngay khi mở connection. Phần DDL tách riêng ở `storage/schema.py`; `storage/connection.py` (`Database`) mở connection duy nhất + load extension + chạy schema; truy vấn SQL theo domain nằm ở `repositories/`.
+- Lưu ý: `pip sqlite-vec` bundle sẵn extension cho Linux x64; extension phải load trên TỪNG connection (engine pool NullPool → sự kiện `connect`). Phần DDL tách riêng ở `storage/schema.py` (nguồn duy nhất); `storage/connection.py` (`Database`) tạo SQLAlchemy engine + chạy schema; repository (`repositories/`) viết bằng SQLAlchemy Core — bảng reflect từ DB, chỉ vec0/FTS5 giữ `text()`.
 
 ### 3.5 Retrieval: hybrid vector + lexical, fusion bằng RRF
 - Vector bắt nghĩa tốt nhưng hay trượt **từ khóa chính xác** (tên riêng, con số, mã hiệu — ví dụ "mức hoàn phí tối đa 5 triệu"). FTS5 bù đúng chỗ đó. Với tiếng Việt, FTS5 unicode61 không tách từ hoàn hảo nhưng vẫn bắt exact term tốt.
@@ -138,7 +138,8 @@ phải sửa agent):
 
 **Hydrate evidence cho verifier**: search_docs chỉ trả excerpt nên bằng chứng citation
 gom từ lượt search không có full text. `_hydrate_evidence` (agent.py) nạp lại full text
-từ store cho các chunk đó trước khi verify — tính chống bịa cite không đổi (chunk_id vẫn
+từ DB (qua `ChunkRepository`) cho các chunk đó trước khi verify — tính chống bịa cite
+không đổi (chunk_id vẫn
 phải do tool trả về trong phiên mới được vào tập bằng chứng), nhưng n-gram support check
 chạy trên text thật thay vì excerpt bị cắt.
 
@@ -193,7 +194,7 @@ def ask(question, max_turns=4):
 
 **Guardrails (bắt buộc — agent thêm failure mode mới):**
 - `recursion_limit = 2*max_turns + 1`: chống loop; quá lượt thì ép chốt bằng bằng chứng tốt nhất đã thu thập (parse từ messages), kèm cờ cảnh báo.
-- Citation verifier **chỉ chấp nhận chunk_id xuất hiện trong các ToolMessage** của phiên — agent bịa nguồn là bị phát hiện ngay. Bằng chứng gom từ mọi tool trả về chunk (search trả list pointer, read_chunk trả dict chính + before/after — chunk kề cũng là bằng chứng vì LLM thấy text của chúng); tool không trả chunk (list_documents) tự động bị loại. Chunk từ search chỉ có excerpt nên được `_hydrate_evidence` nạp lại full text từ store trước khi verify.
+- Citation verifier **chỉ chấp nhận chunk_id xuất hiện trong các ToolMessage** của phiên — agent bịa nguồn là bị phát hiện ngay. Bằng chứng gom từ mọi tool trả về chunk (search trả list pointer, read_chunk trả dict chính + before/after — chunk kề cũng là bằng chứng vì LLM thấy text của chúng); tool không trả chunk (list_documents) tự động bị loại. Chunk từ search chỉ có excerpt nên được `_hydrate_evidence` nạp lại full text từ DB (qua `ChunkRepository`) trước khi verify.
 - `low_confidence` programmatic: max score **chỉ trong các lượt search** dưới ngưỡng → flag, bất kể LLM nói gì (read/list không có score cosine, không được kéo flag oan).
 - LLM trả lời thẳng không gọi tool → phát hiện được (messages không có tool_call); có thể ép lượt đầu bằng `tool_choice` nếu cần.
 - Model phải hỗ trợ function calling (GPT-4o-mini, Qwen, Claude...; model local nhỏ hỗ trợ thất thường) — đây là yêu cầu bắt buộc vì agent gọi tool là luồng trả lời duy nhất.
@@ -265,7 +266,7 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 | `langchain_core.tools.@tool` | ✅ | Khai báo `search_docs` từ 1 hàm Python — schema sinh tự động, gọn hơn viết JSON schema tay. |
 | `langchain_openai.ChatOpenAI` | ✅ | Chat model + function calling qua `base_url` cấu hình được (OpenAI/OpenRouter/compatible). |
 | `langchain_text_splitters` | ✅ | `MarkdownHeaderTextSplitter` + `RecursiveCharacterTextSplitter` cho chunking theo cấu trúc — chuẩn, ít code, dễ giải thích tham số. |
-| Vector store abstraction của LangChain | ❌ | sqlite-vec không phải store first-class; hybrid retrieval + RRF là phần tự viết — giữ tầng truy vấn (`repositories/`) và `retrieval.py` thuần Python để kiểm soát và giải thích được. |
+| Vector store abstraction của LangChain | ❌ | sqlite-vec không phải store first-class; hybrid retrieval + RRF là phần tự viết — giữ tầng truy vấn tự viết (`repositories/`, SQLAlchemy Core + `text()` cho vec0/FTS5) và `retrieval.py` để kiểm soát và giải thích được. |
 | **LangSmith** | ✅ | Tracing qua env `LANGSMITH_API_KEY`/`LANGSMITH_TRACING`; `observability/tracing.py` cung cấp client factory lazy (warn-once khi thiếu key), metadata per-invocation và submit feedback scores (invalid_citations/unsupported_claims/low_confidence) lên root run. Không cấu hình → no-op an toàn. |
 
 **Tracing + feedback qua LangSmith** (`observability/tracing.py`): mỗi lần `ask`/`ask_stream` chạy trong một trace (metadata: conversation_id/streamed, tags: sync/stream); `Retriever.search` và tool `search_docs` được decorate `@traceable` tạo child spans; cuối lượt service submit 3 feedback scores lên root run: `invalid_citations` (số cite sai), `unsupported_claims` (số claim thiếu đỡ), `low_confidence` (0/1). Không có `LANGSMITH_API_KEY`/`LANGSMITH_TRACING` thì toàn bộ là no-op an toàn (warn 1 lần nếu bật tracing mà thiếu key). Vẫn giữ `payload_json` trong SQLite cho UI replay lịch sử hội thoại.
@@ -307,8 +308,8 @@ chakra_rag/
 │   ├── core/                    # nghiệp vụ lõi: chunking, embedding, retrieval, verify, security
 │   ├── agent/                   # lớp LLM orchestration: agent.py (vòng lặp LangGraph), llm.py
 │   │   └── tools/               #   tool registry (@register_tool → build_tools); thêm tool mới ở đây
-│   ├── storage/                 # storage/schema.py: DDL bảng + index; storage/connection.py: Database (connection duy nhất + RLock)
-│   ├── repositories/            #   truy vấn SQL theo domain: chunk (vec0+FTS5), file, conversation, integration
+│   ├── storage/                 # storage/schema.py: DDL bảng + index; storage/connection.py: Database (SQLAlchemy engine, schema khi khởi tạo)
+│   ├── repositories/            #   SQLAlchemy Core theo domain: chunk (vec0+FTS5 qua text()), file, conversation, integration
 │   ├── ingestion/worker.py      # worker nền: parse → chunk → embed, cập nhật tiến trình
 │   ├── service/                 # domain services (chat, conversation, file, integration) + container
 │   │   ├── container.py         #   ServiceContainer: composition root & dependency container
@@ -320,7 +321,7 @@ chakra_rag/
 │   │   ├── app.py               #   app factory, lifespan & CORS
 │   │   └── routes/              #   chat, files, conversations, integrations, health
 │   └── observability/           # LangSmith tracing + timing helpers
-├── tests/test_smoke.py       # chunking + store + retrieve + verify chạy không cần LLM
+├── tests/test_smoke.py       # chunking + storage (repositories) + retrieve + verify chạy không cần LLM
 └── ui/                       # BONUS — Vite + React + TS, tổ chức theo feature
     ├── package.json
     ├── vite.config.ts        # proxy /api → localhost:8000

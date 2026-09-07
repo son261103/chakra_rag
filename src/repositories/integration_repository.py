@@ -1,12 +1,15 @@
 """Truy vấn bảng `llm_integrations`: cấu hình LLM provider (API key mã hóa).
 
-DDL tương ứng nằm ở storage/schema.py. Mã hóa/giải mã key KHÔNG nằm ở đây —
-repository chỉ lưu/đọc chuỗi đã mã hóa; nghiệp vụ xử lý key ở service tầng trên.
+SQLAlchemy Core; bảng reflect từ DB (schema.py là nguồn DDL duy nhất).
+Mã hóa/giải mã key KHÔNG nằm ở đây — repository chỉ lưu/đọc chuỗi đã mã hóa;
+nghiệp vụ xử lý key ở service tầng trên.
 """
 
 from __future__ import annotations
 
 from typing import Any
+
+from sqlalchemy import MetaData, Table, delete, func, insert, select, update
 
 from repositories.common import new_id, utcnow_iso
 from storage.connection import Database
@@ -17,6 +20,8 @@ class IntegrationRepository:
 
     def __init__(self, db: Database):
         self.db = db
+        meta = MetaData()
+        self.integrations = Table("llm_integrations", meta, autoload_with=db.engine)
 
     def create_integration(
         self,
@@ -31,35 +36,25 @@ class IntegrationRepository:
     ) -> dict[str, Any]:
         iid = integration_id or new_id()
         now = utcnow_iso()
-        with self.db.lock:
-            count = self.db.conn.execute(
-                "SELECT COUNT(*) FROM llm_integrations"
-            ).fetchone()[0]
+        with self.db.engine.begin() as conn:
+            count = conn.scalar(select(func.count()).select_from(self.integrations))
             should_activate = is_active or (count == 0)
             if should_activate:
-                self.db.conn.execute("UPDATE llm_integrations SET is_active = 0")
-            self.db.conn.execute(
-                """
-                INSERT INTO llm_integrations (
-                    id, name, provider, base_url, model,
-                    encrypted_api_key, encrypted_dek, is_active,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    iid,
-                    name.strip(),
-                    provider.strip() or "openai",
-                    base_url.strip() or "https://api.openai.com/v1",
-                    model.strip(),
-                    encrypted_api_key,
-                    encrypted_dek,
-                    1 if should_activate else 0,
-                    now,
-                    now,
-                ),
+                conn.execute(update(self.integrations).values(is_active=0))
+            conn.execute(
+                insert(self.integrations).values(
+                    id=iid,
+                    name=name.strip(),
+                    provider=provider.strip() or "openai",
+                    base_url=base_url.strip() or "https://api.openai.com/v1",
+                    model=model.strip(),
+                    encrypted_api_key=encrypted_api_key,
+                    encrypted_dek=encrypted_dek,
+                    is_active=should_activate,
+                    created_at=now,
+                    updated_at=now,
+                )
             )
-            self.db.conn.commit()
         return self.get_integration(iid)  # type: ignore[return-value]
 
     def update_integration(
@@ -74,125 +69,120 @@ class IntegrationRepository:
         is_active: bool | None = None,
     ) -> dict[str, Any] | None:
         now = utcnow_iso()
-        with self.db.lock:
-            existing = self.db.conn.execute(
-                "SELECT * FROM llm_integrations WHERE id = ?", (integration_id,)
-            ).fetchone()
+        values: dict[str, Any] = {"updated_at": now}
+        if name is not None:
+            values["name"] = name.strip()
+        if model is not None:
+            values["model"] = model.strip()
+        if base_url is not None:
+            values["base_url"] = base_url.strip()
+        if provider is not None:
+            values["provider"] = provider.strip()
+        if encrypted_api_key is not None:
+            values["encrypted_api_key"] = encrypted_api_key
+        if encrypted_dek is not None:
+            values["encrypted_dek"] = encrypted_dek
+        if is_active is not None:
+            values["is_active"] = is_active
+
+        with self.db.engine.begin() as conn:
+            existing = conn.execute(
+                select(self.integrations).where(self.integrations.c.id == integration_id)
+            ).mappings().first()
             if existing is None:
                 return None
-
-            updates: list[str] = ["updated_at = ?"]
-            params: list[Any] = [now]
-
-            if name is not None:
-                updates.append("name = ?")
-                params.append(name.strip())
-            if model is not None:
-                updates.append("model = ?")
-                params.append(model.strip())
-            if base_url is not None:
-                updates.append("base_url = ?")
-                params.append(base_url.strip())
-            if provider is not None:
-                updates.append("provider = ?")
-                params.append(provider.strip())
-            if encrypted_api_key is not None:
-                updates.append("encrypted_api_key = ?")
-                params.append(encrypted_api_key)
-            if encrypted_dek is not None:
-                updates.append("encrypted_dek = ?")
-                params.append(encrypted_dek)
-            if is_active is not None:
-                if is_active:
-                    self.db.conn.execute("UPDATE llm_integrations SET is_active = 0")
-                updates.append("is_active = ?")
-                params.append(1 if is_active else 0)
-
-            params.append(integration_id)
-            self.db.conn.execute(
-                f"UPDATE llm_integrations SET {', '.join(updates)} WHERE id = ?",
-                params,
+            if is_active:
+                # Kích hoạt integration này → tắt mọi integration khác.
+                conn.execute(update(self.integrations).values(is_active=0))
+            conn.execute(
+                update(self.integrations)
+                .where(self.integrations.c.id == integration_id)
+                .values(**values)
             )
-            self.db.conn.commit()
         return self.get_integration(integration_id)
 
     def delete_integration(self, integration_id: str) -> bool:
-        with self.db.lock:
-            existing = self.db.conn.execute(
-                "SELECT is_active FROM llm_integrations WHERE id = ?", (integration_id,)
-            ).fetchone()
+        with self.db.engine.begin() as conn:
+            existing = conn.execute(
+                select(self.integrations.c.is_active).where(
+                    self.integrations.c.id == integration_id
+                )
+            ).mappings().first()
             if existing is None:
                 return False
             was_active = bool(existing["is_active"])
-            self.db.conn.execute("DELETE FROM llm_integrations WHERE id = ?", (integration_id,))
+            conn.execute(delete(self.integrations).where(self.integrations.c.id == integration_id))
             if was_active:
-                fallback = self.db.conn.execute(
-                    "SELECT id FROM llm_integrations ORDER BY updated_at DESC LIMIT 1"
-                ).fetchone()
+                fallback = conn.execute(
+                    select(self.integrations.c.id)
+                    .order_by(self.integrations.c.updated_at.desc())
+                    .limit(1)
+                ).mappings().first()
                 if fallback:
-                    self.db.conn.execute(
-                        "UPDATE llm_integrations SET is_active = 1 WHERE id = ?",
-                        (fallback["id"],),
+                    conn.execute(
+                        update(self.integrations)
+                        .where(self.integrations.c.id == fallback["id"])
+                        .values(is_active=1)
                     )
-            self.db.conn.commit()
-            return True
+        return True
 
     def get_integration(self, integration_id: str) -> dict[str, Any] | None:
-        with self.db.lock:
-            row = self.db.conn.execute(
-                "SELECT * FROM llm_integrations WHERE id = ?", (integration_id,)
-            ).fetchone()
+        with self.db.engine.connect() as conn:
+            row = conn.execute(
+                select(self.integrations).where(self.integrations.c.id == integration_id)
+            ).mappings().first()
         return dict(row) if row else None
 
     def list_integrations(self) -> list[dict[str, Any]]:
-        with self.db.lock:
-            rows = self.db.conn.execute(
-                """
-                SELECT id, name, provider, base_url, model,
-                       encrypted_api_key, encrypted_dek, is_active,
-                       created_at, updated_at
-                FROM llm_integrations
-                ORDER BY is_active DESC, updated_at DESC
-                """
-            ).fetchall()
+        stmt = select(self.integrations).order_by(
+            self.integrations.c.is_active.desc(), self.integrations.c.updated_at.desc()
+        )
+        with self.db.engine.connect() as conn:
+            rows = conn.execute(stmt).mappings().all()
         return [dict(row) for row in rows]
 
     def get_active_integration(self) -> dict[str, Any] | None:
-        with self.db.lock:
-            row = self.db.conn.execute(
-                "SELECT * FROM llm_integrations WHERE is_active = 1 LIMIT 1"
-            ).fetchone()
+        """Integration đang active; nếu chưa có thì tự kích hoạt bản mới nhất."""
+        with self.db.engine.begin() as conn:
+            row = conn.execute(
+                select(self.integrations)
+                .where(self.integrations.c.is_active == 1)
+                .limit(1)
+            ).mappings().first()
             if row:
                 return dict(row)
-            first = self.db.conn.execute(
-                "SELECT id FROM llm_integrations ORDER BY updated_at DESC LIMIT 1"
-            ).fetchone()
+            first = conn.execute(
+                select(self.integrations.c.id)
+                .order_by(self.integrations.c.updated_at.desc())
+                .limit(1)
+            ).mappings().first()
             if first:
-                self.db.conn.execute(
-                    "UPDATE llm_integrations SET is_active = 1 WHERE id = ?", (first["id"],)
+                conn.execute(
+                    update(self.integrations)
+                    .where(self.integrations.c.id == first["id"])
+                    .values(is_active=1)
                 )
-                self.db.conn.commit()
-                row = self.db.conn.execute(
-                    "SELECT * FROM llm_integrations WHERE id = ?", (first["id"],)
-                ).fetchone()
+                row = conn.execute(
+                    select(self.integrations).where(self.integrations.c.id == first["id"])
+                ).mappings().first()
                 return dict(row) if row else None
         return None
 
     def set_active_integration(self, integration_id: str) -> dict[str, Any] | None:
-        with self.db.lock:
-            existing = self.db.conn.execute(
-                "SELECT id FROM llm_integrations WHERE id = ?", (integration_id,)
-            ).fetchone()
+        with self.db.engine.begin() as conn:
+            existing = conn.execute(
+                select(self.integrations.c.id).where(self.integrations.c.id == integration_id)
+            ).mappings().first()
             if not existing:
                 return None
-            self.db.conn.execute("UPDATE llm_integrations SET is_active = 0")
-            self.db.conn.execute(
-                "UPDATE llm_integrations SET is_active = 1, updated_at = ? WHERE id = ?",
-                (utcnow_iso(), integration_id),
+            conn.execute(update(self.integrations).values(is_active=0))
+            conn.execute(
+                update(self.integrations)
+                .where(self.integrations.c.id == integration_id)
+                .values(is_active=1, updated_at=utcnow_iso())
             )
-            self.db.conn.commit()
         return self.get_integration(integration_id)
 
     def count_integrations(self) -> int:
-        with self.db.lock:
-            return self.db.conn.execute("SELECT COUNT(*) FROM llm_integrations").fetchone()[0]
+        with self.db.engine.connect() as conn:
+            return conn.scalar(select(func.count()).select_from(self.integrations))

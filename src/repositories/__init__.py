@@ -1,6 +1,7 @@
-"""Repository — tầng truy vấn SQL theo domain, dùng chung `Database` (storage/connection).
+"""Repository — tầng truy vấn theo domain, viết bằng SQLAlchemy Core trên
+`Database` (storage/connection.py).
 
-- `ChunkRepository`        : chunks + vec0 + FTS5 (tìm kiếm hybrid).
+- `ChunkRepository`        : chunks + vec0 + FTS5 (vec/FTS5 qua text() — extension).
 - `FileRepository`         : metadata file ingest.
 - `ConversationRepository` : hội thoại + tin nhắn.
 - `IntegrationRepository`  : cấu hình LLM provider.

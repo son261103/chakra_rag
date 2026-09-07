@@ -1,14 +1,20 @@
 """Truy vấn bảng `files`: trạng thái ingest từng file (phục vụ UI danh sách + %).
 
-DDL tương ứng nằm ở storage/schema.py. `delete_file` có cascade sang chunk
-(vec/fts) trong cùng transaction — việc xóa doc gắn với vòng đời file nên giữ
-trọn ở đây thay vì tách nửa vời sang ChunkRepository.
+SQLAlchemy Core; bảng reflect từ DB (schema.py là nguồn DDL duy nhất).
+`delete_file` có cascade sang chunk (vec/fts) trong cùng transaction — việc xóa
+doc gắn với vòng đời file nên giữ trọn ở đây thay vì tách nửa vời sang
+ChunkRepository. Xóa vec/fts vẫn là `text()` vì virtual table.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy import MetaData, Table, delete, select, update
+from sqlalchemy import text as sql_text
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+from repositories.chunk_repository import _delete_chunk_rows
 from storage.connection import Database
 
 
@@ -17,6 +23,9 @@ class FileRepository:
 
     def __init__(self, db: Database):
         self.db = db
+        meta = MetaData()
+        self.files = Table("files", meta, autoload_with=db.engine)
+        self.chunks = Table("chunks", meta, autoload_with=db.engine)
 
     def upsert_file(
         self,
@@ -26,93 +35,83 @@ class FileRepository:
         status: str = "queued",
         chunks_total: int = 0,
     ) -> None:
-        with self.db.lock:
-            self.db.conn.execute(
-                """
-                INSERT INTO files (file_id, name, source, status, chunks_total)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(file_id) DO UPDATE SET
-                    name = excluded.name,
-                    status = excluded.status,
-                    chunks_total = excluded.chunks_total,
-                    chunks_done = 0,
-                    error = NULL
-                """,
-                (file_id, name, source, status, chunks_total),
-            )
-            self.db.conn.commit()
+        stmt = sqlite_insert(self.files).values(
+            file_id=file_id,
+            name=name,
+            source=source,
+            status=status,
+            chunks_total=chunks_total,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[self.files.c.file_id],
+            set_={
+                "name": name,
+                "status": status,
+                "chunks_total": chunks_total,
+                "chunks_done": 0,
+                "error": None,
+            },
+        )
+        with self.db.engine.begin() as conn:
+            conn.execute(stmt)
 
     def set_file_status(self, file_id: str, status: str, error: str | None = None) -> None:
-        with self.db.lock:
-            self.db.conn.execute(
-                "UPDATE files SET status = ?, error = ? WHERE file_id = ?",
-                (status, error, file_id),
+        with self.db.engine.begin() as conn:
+            conn.execute(
+                update(self.files)
+                .where(self.files.c.file_id == file_id)
+                .values(status=status, error=error)
             )
-            self.db.conn.commit()
 
     def set_file_progress(self, file_id: str, chunks_done: int) -> None:
-        with self.db.lock:
-            self.db.conn.execute(
-                "UPDATE files SET chunks_done = ? WHERE file_id = ?",
-                (chunks_done, file_id),
+        with self.db.engine.begin() as conn:
+            conn.execute(
+                update(self.files)
+                .where(self.files.c.file_id == file_id)
+                .values(chunks_done=chunks_done)
             )
-            self.db.conn.commit()
 
     def list_files(self) -> list[dict[str, Any]]:
-        with self.db.lock:
-            rows = self.db.conn.execute(
-                "SELECT file_id, name, source, status, chunks_total, chunks_done, error"
-                " FROM files ORDER BY rowid"
-            ).fetchall()
+        with self.db.engine.connect() as conn:
+            rows = conn.execute(
+                select(self.files).order_by(sql_text("rowid"))
+            ).mappings().all()
         return [dict(row) for row in rows]
 
     def get_file(self, file_id: str) -> dict[str, Any] | None:
-        with self.db.lock:
-            row = self.db.conn.execute(
-                "SELECT * FROM files WHERE file_id = ?", (file_id,)
-            ).fetchone()
+        with self.db.engine.connect() as conn:
+            row = conn.execute(
+                select(self.files).where(self.files.c.file_id == file_id)
+            ).mappings().first()
         return dict(row) if row else None
 
     def delete_file(self, file_id: str) -> dict[str, Any] | None:
         """Xóa metadata file + mọi chunk của doc cùng tên. Trả về row đã xóa hoặc None."""
-        with self.db.lock:
-            row = self.db.conn.execute(
-                "SELECT * FROM files WHERE file_id = ?", (file_id,)
-            ).fetchone()
+        with self.db.engine.begin() as conn:
+            row = conn.execute(
+                select(self.files).where(self.files.c.file_id == file_id)
+            ).mappings().first()
             if row is None:
                 return None
             meta = dict(row)
             doc = meta["name"]
-            rowids = [
-                r["id"]
-                for r in self.db.conn.execute("SELECT id FROM chunks WHERE doc = ?", (doc,))
-            ]
-            if rowids:
-                placeholders = ",".join("?" * len(rowids))
-                self.db.conn.execute(
-                    f"DELETE FROM vec_chunks WHERE rowid IN ({placeholders})", rowids
-                )
-                self.db.conn.execute(
-                    f"DELETE FROM fts_chunks WHERE rowid IN ({placeholders})", rowids
-                )
-                self.db.conn.execute(
-                    f"DELETE FROM chunks WHERE id IN ({placeholders})", rowids
-                )
-            self.db.conn.execute("DELETE FROM files WHERE file_id = ?", (file_id,))
-            self.db.conn.commit()
-            meta["chunks_removed"] = len(rowids)
-            return meta
+            rowids = conn.execute(
+                select(self.chunks.c.id).where(self.chunks.c.doc == doc)
+            ).scalars().all()
+            _delete_chunk_rows(conn, self.chunks, rowids)
+            conn.execute(delete(self.files).where(self.files.c.file_id == file_id))
+        meta["chunks_removed"] = len(rowids)
+        return meta
 
     def fail_interrupted_ingests(self) -> int:
         """Đánh failed các job dở (queued/parsing/…) sau restart — không tự nhúng lại."""
-        with self.db.lock:
-            cur = self.db.conn.execute(
-                """
-                UPDATE files
-                SET status = 'failed',
-                    error = 'Bị gián đoạn khi server dừng — bấm Nhúng lại RAG'
-                WHERE status IN ('queued', 'parsing', 'chunking', 'embedding')
-                """
+        with self.db.engine.begin() as conn:
+            result = conn.execute(
+                update(self.files)
+                .where(self.files.c.status.in_(("queued", "parsing", "chunking", "embedding")))
+                .values(
+                    status="failed",
+                    error="Bị gián đoạn khi server dừng — bấm Nhúng lại RAG",
+                )
             )
-            self.db.conn.commit()
-            return cur.rowcount
+        return result.rowcount

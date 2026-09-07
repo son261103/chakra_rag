@@ -5,7 +5,7 @@ chỉ cần tạo file ở đó, agent tự nhận qua build_tools().
 
 Phễu 2 bước theo pattern pointer-first: search_docs trả chunk_id + excerpt,
 read_chunk mới trả text đầy đủ (+ chunk kề). Evidence citation được hydrate
-full text từ store trước khi verify (xem _hydrate_evidence).
+full text từ DB (qua ChunkRepository) trước khi verify (xem _hydrate_evidence).
 
 Guardrails:
 - recursion_limit = 2*max_turns + 1 (mỗi lượt tool = 2 bước graph) chống loop.
@@ -195,7 +195,7 @@ def _hydrate_evidence(
 
     search_docs giờ chỉ trả excerpt nên evidence từ search không đủ text đầy
     đủ cho citation verifier (n-gram support check). Chunk nào thiếu text
-    (hoặc text bị cắt) được nạp lại từ store — tính chống bịa cite không đổi:
+    (hoặc text bị cắt) được nạp lại từ DB — tính chống bịa cite không đổi:
     chunk_id vẫn phải do tool trả về trong phiên thì mới vào được đây.
     """
     if chunk_repo is None:

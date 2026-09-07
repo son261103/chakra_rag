@@ -38,10 +38,6 @@ class ConversationService:
         """Xóa cuộc hội thoại và toàn bộ tin nhắn liên quan (CASCADE)."""
         return self.repo.delete_conversation(conversation_id)
 
-    def rename_conversation(self, conversation_id: str, title: str) -> bool:
-        """Đổi tên tiêu đề cuộc hội thoại."""
-        return self.repo.rename_conversation(conversation_id, title)
-
     def list_messages(self, conversation_id: str) -> list[dict[str, Any]]:
         """Lấy toàn bộ tin nhắn của một cuộc hội thoại."""
         return self.repo.list_messages(conversation_id)

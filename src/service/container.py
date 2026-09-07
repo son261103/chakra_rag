@@ -1,7 +1,8 @@
 """Composition root & container: khởi tạo hạ tầng và liên kết các domain service.
 
-Tầng dữ liệu: `Database` (storage/connection.py) giữ connection duy nhất; các
-repository (repositories/) chứa truy vấn SQL theo domain, được wire vào service.
+Tầng dữ liệu: `Database` (storage/connection.py) = SQLAlchemy engine + schema;
+các repository (repositories/, SQLAlchemy Core) chứa truy vấn theo domain và
+được wire vào service.
 
 Các domain service chuyên biệt:
 - `chat`: ChatService (RAG agent loop, retrieval, verification, streaming)
@@ -38,7 +39,8 @@ class ServiceContainer:
         self.cfg = cfg or get_config()
         self.cfg.ensure_dirs()
         self.embedder = Embedder(self.cfg.embed_model)
-        # Database sở hữu connection duy nhất + schema; repositories chứa truy vấn theo domain.
+        # Database = SQLAlchemy engine + schema; repositories (SQLAlchemy Core)
+        # chứa truy vấn theo domain.
         self.db = Database(self.cfg.db_path, embed_dim=self.embedder.dim)
         self.chunk_repo = ChunkRepository(self.db)
         self.file_repo = FileRepository(self.db)
