@@ -18,23 +18,10 @@ def client(tmp_path):
     service.chunk_repo.count_chunks.return_value = 7
     service.conversations.create_conversation.return_value = {"id": "c1", "title": "Hội thoại mới"}
     service.conversations.list_conversations.return_value = []
-    service.files.list_files.return_value = []
     service.files.upload_file.return_value = {
         "file_id": "fid1",
         "name": "notes.md",
         "status": "queued",
-    }
-    service.files.get_progress.return_value = {
-        "status": "ready",
-        "percent": 100,
-        "chunks_done": 1,
-        "chunks_total": 1,
-    }
-    worker.progress.return_value = {
-        "status": "ready",
-        "percent": 100,
-        "chunks_done": 1,
-        "chunks_total": 1,
     }
     # bypass lifespan init entirely; restore original after tests:
     original_lifespan = app.router.lifespan_context
@@ -85,7 +72,6 @@ def test_upload_accepts_md(client):
     assert r.json()["file_id"] == "fid1"
 
 def test_ask_works_when_index_empty(client):
-    client.service.files.get_progress.return_value = {"status": "empty"}
     client.service.chat.ask.return_value = {
         "question": "hi?",
         "answer": "Không tìm thấy thông tin trong tài liệu.",

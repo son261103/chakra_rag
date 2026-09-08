@@ -65,9 +65,9 @@ Lối vào: **FastAPI** (`POST /ask`) theo chuẩn RESTful API. Phía trên là 
 │    → click mở panel chunk gốc                              │
 │  - hiển thị low_confidence / unsupported_claims            │
 └───────────────▲────────────────────────────────────────────┘
-                │ fetch (REST/JSON, polling tiến trình)
+                │ fetch (REST/JSON) + SSE (tiến trình ingest)
 ┌───────────────┴────────────────────────────────────────────┐
-│  FastAPI (mỏng): /files /ingest/progress /ask              │
+│  FastAPI (mỏng): /files /ingest/events (SSE) /ask          │
 │                  /chunks/{id} /health                      │
 └───────────────▲────────────────────────────────────────────┘
                 │
@@ -223,9 +223,8 @@ Trong README nói rõ: support check bằng overlap là proxy rẻ tiền; nếu
 Endpoints:
 ```
 POST /files            — upload file (multipart: .md, .txt, tùy chọn .pdf)
-GET  /files            — danh sách file: tên, status, số chunk, lỗi nếu có
-GET  /ingest/progress  — {status, files_total, files_done,
-                          chunks_done, chunks_total, percent}
+GET  /ingest/events    — SSE: đẩy snapshot {files, progress} ngay khi client
+                          nối vào và mỗi khi ingest đổi trạng thái
 POST /ask              — {question, top_k?} → {answer, citations[],
                           search_trace[], low_confidence, unsupported_claims[]}
 GET  /chunks/{id}      — xem chunk gốc (phục vụ việc kiểm tra trích dẫn)
@@ -236,6 +235,7 @@ GET  /health
 - Upload lưu file vào `data/uploads/`, tạo bản ghi trong bảng `files` (SQLite): `(file_id, name, status, chunks_total, chunks_done, error)` để UI hiển thị "đang có những file nào" thống nhất một chỗ.
 - State machine mỗi file: `queued → parsing → chunking → embedding → ready` (hoặc `failed` + thông báo lỗi).
 - Ingest chạy trong **worker nền 1 thread** (queue + thread) — cố tình 1 thread để tránh ghi SQLite đồng thời và để tiến trình deterministc. Sau mỗi batch embedding cập nhật `chunks_done` → UI đọc ra %.
+- Worker gọi `events.notify()` (IngestEventBus) sau mỗi lần ghi trạng thái → endpoint SSE `GET /ingest/events` chờ tín hiệu và đẩy snapshot `{files, progress}` mới. UI nhận qua `EventSource`, **không poll** — không có request nào between các lần đổi trạng thái (chỉ keepalive 15s/lần).
 - Status tổng = `ready` khi mọi file đã ready → UI bật chấm xanh.
 - Chat dùng được ngay cả khi index rỗng hoặc đang ingest: retrieval không có kết quả → `low_confidence`, agent trả lời là không tìm thấy thông tin trong tài liệu.
 - Toàn bộ tương tác upload, xem tiến trình, cấu hình tích hợp LLM và hỏi đáp đều thông qua API và Web UI.
@@ -250,11 +250,11 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 - **Layout 2 cột**:
   - Cột trái, từ trên xuống:
     1. **Khu tài liệu**: nút upload (kéo-thả hoặc chọn file `.md/.txt`), danh sách file đang có trong index (tên + trạng thái từng file).
-    2. **Thanh tiến trình ingest**: phần trăm embedding (poll `GET /ingest/progress` mỗi 1–2s khi đang chạy). Khi toàn bộ file `ready` → **chấm xanh "Sẵn sàng"** và ô chat được bật; khi chưa xong thì ô chat disable kèm nhãn "Đang xử lý tài liệu…".
+    2. **Thanh tiến trình ingest**: nhận qua SSE `/ingest/events` — backend đẩy snapshot mới mỗi khi ingest đổi trạng thái. Khi toàn bộ file `ready` → **chấm xanh "Sẵn sàng"**; ô chat luôn dùng được kể cả khi index rỗng.
     3. **Ô hỏi + lịch sử hỏi đáp**: mỗi câu trả lời render markdown nhẹ, các citation `[1]`, `[2]` là chip bấm được. Bên dưới câu trả lời hiển thị **search trace** (từ `search_trace` của `/ask`): "🔍 Agent đã tìm kiếm 2 lần: 'mức hoàn phí tối đa' (3 kết quả) → 'điều kiện hoàn phí' (2 kết quả)" — người xem thấy trực tiếp agent gọi tool như thế nào.
   - Cột phải: panel "Nguồn trích dẫn" — click chip nào thì hiển thị chunk gốc tương ứng (doc, section, span text), highlight phần liên quan. Đây chính là tính năng "ăn điểm": người xem kiểm chứng được trích dẫn trỏ về đúng đoạn tài liệu.
   - Badge cảnh báo khi `low_confidence=true` hoặc `unsupported_claims` khác rỗng (ví dụ: "Câu trả lời có phần chưa được nguồn đỡ").
-- **Gọi API**: `fetch` thuần (không cần axios) tới `POST /files`, `GET /ingest/progress`, `POST /ask`, `GET /chunks/{id}`; dev proxy trong `vite.config.ts` trỏ `/api` → `localhost:8000` để khỏi lo CORS khi dev. Polling đơn giản bằng `setInterval` — không cần WebSocket cho quy mô này.
+- **Gọi API**: `fetch` thuần (không cần axios) tới `POST /files`, `POST /ask`, `GET /chunks/{id}`; trạng thái ingest nhận qua `EventSource` (SSE `/ingest/events`) — không poll, không cần WebSocket cho quy mô này; dev proxy trong `vite.config.ts` trỏ `/api` → `localhost:8000` để khỏi lo CORS khi dev.
 - **Không làm**: auth phức tạp, routing nhiều trang, deploy cloud. Tập trung tối đa vào trải nghiệm Web UI + API phục vụ bài toán RAG.
 
 ### 3.10 Chọn framework: dùng LangChain + LangGraph; observability qua LangSmith (tùy chọn)
@@ -333,9 +333,9 @@ chakra_rag/
     └── src/
         ├── main.tsx
         ├── app/App.tsx       # layout 2 cột: tài liệu+chat | panel nguồn
-        ├── api/client.ts     # mọi fetch: /files, /ingest/progress, /ask, /chunks/{id}
+        ├── api/client.ts     # mọi fetch: /files, /ask, /chunks/{id} + SSE /ingest/events
         ├── api/types.ts      # type TS khớp response schema của API
-        ├── hooks/useIngestStatus.ts  # poll danh sách file + tiến trình
+        ├── hooks/useIngestStatus.ts  # nhận danh sách file + tiến trình qua SSE
         └── components/
             ├── documents/FilePanel.tsx   # upload + danh sách file + tiến trình % + chấm xanh
             ├── chat/AskBox.tsx

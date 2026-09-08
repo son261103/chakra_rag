@@ -1,34 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
-import { getProgress, listFiles } from "../api/client";
+import { subscribeIngest } from "../api/client";
+import type { IngestSnapshot } from "../api/client";
 import type { FileEntry, IngestProgress } from "../api/types";
 
 /**
- * Poll trạng thái ingest của backend: danh sách file + tiến trình embedding.
- * Poll 1s khi đang xử lý (cần cập nhật % liên tục), 15s khi đã sẵn sàng
- * (lúc đó ít có thay đổi; upload mới đã có refresh() gọi ngay sau khi bấm).
+ * Trạng thái ingest thuần SSE — không poll: backend đẩy snapshot
+ * {files, progress} ngay khi client nối vào và mỗi khi worker đổi trạng thái
+ * (upload/reingest/delete/tiến trình embedding). Mất kết nối thì EventSource
+ * tự reconnect và nhận lại snapshot đầu nên state tự phục hồi.
  */
 export function useIngestStatus() {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [progress, setProgress] = useState<IngestProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const [f, p] = await Promise.all([listFiles(), getProgress()]);
-      setFiles(f);
-      setProgress(p);
-      setError(null);
-    } catch (e) {
-      setError(String(e));
-    }
+  const apply = useCallback((data: IngestSnapshot) => {
+    setFiles(data.files);
+    setProgress(data.progress);
+    setError(null);
   }, []);
 
-  useEffect(() => {
-    const processing = progress?.status === "processing" || progress?.status === "empty";
-    const interval = setInterval(refresh, processing ? 1000 : 15000);
-    refresh();
-    return () => clearInterval(interval);
-  }, [progress?.status, refresh]);
+  useEffect(
+    () => subscribeIngest(apply, () => setError("Mất kết nối tới server — đang thử lại…")),
+    [apply]
+  );
 
-  return { files, progress, error, refresh };
+  return { files, progress, error };
 }

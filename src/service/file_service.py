@@ -120,3 +120,17 @@ class FileService:
         if not self.worker:
             return {"status": "ready", "percent": 100, "chunks_done": 0, "chunks_total": 0}
         return self.worker.progress()
+
+    def ingest_snapshot(self) -> dict[str, Any]:
+        """Snapshot {files, progress} — payload đẩy xuống UI qua SSE /ingest/events."""
+        return {"files": self.list_files(), "progress": self.get_progress()}
+
+    def wait_ingest_change(self, since: int, timeout: float) -> int | None:
+        """Chờ worker báo đổi trạng thái (cho SSE). Trả version mới, None nếu timeout."""
+        if not self.worker:
+            return None
+        return self.worker.events.wait_for(since, timeout)
+
+    def ingest_version(self) -> int:
+        """Version hiện tại của event bus — mốc để SSE chờ thay đổi kế tiếp."""
+        return self.worker.events.version if self.worker else 0

@@ -8,7 +8,6 @@ interface Props {
   onClose: () => void;
   files: FileEntry[];
   progress: IngestProgress | null;
-  onUploaded: () => void;
   onInspectFile?: (file: FileEntry) => void;
 }
 
@@ -31,8 +30,12 @@ function statusTitle(f: FileEntry): string {
   return `${f.name}\n${label[f.status]}`;
 }
 
-/** Drawer quản lý tài liệu: upload, danh sách file, nhúng lại / xóa. */
-export default function FileDrawer({ open, onClose, files, progress, onUploaded, onInspectFile }: Props) {
+/** Drawer quản lý tài liệu: upload, danh sách file, nhúng lại / xóa.
+ *
+ * Danh sách file + tiến trình nhận qua SSE (useIngestStatus) — upload/reingest/
+ * delete ở đây chỉ gọi API, backend tự đẩy snapshot mới khi worker đổi trạng thái.
+ */
+export default function FileDrawer({ open, onClose, files, progress, onInspectFile }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [busyFileId, setBusyFileId] = useState<string | null>(null);
@@ -54,7 +57,6 @@ export default function FileDrawer({ open, onClose, files, progress, onUploaded,
       for (const file of Array.from(selected)) {
         await uploadFile(file);
       }
-      onUploaded();
     } catch (e) {
       setActionError(String(e));
     } finally {
@@ -69,7 +71,6 @@ export default function FileDrawer({ open, onClose, files, progress, onUploaded,
     setActionError(null);
     try {
       await reingestFile(fileId);
-      onUploaded();
     } catch (e) {
       setActionError(String(e));
     } finally {
@@ -84,7 +85,6 @@ export default function FileDrawer({ open, onClose, files, progress, onUploaded,
     setActionError(null);
     try {
       await deleteFile(fileId);
-      onUploaded();
     } catch (e) {
       setActionError(String(e));
     } finally {

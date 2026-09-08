@@ -129,7 +129,7 @@ function messagesToHistory(
 }
 
 export default function App() {
-  const { files, progress, error: ingestError, refresh } = useIngestStatus();
+  const { files, progress, error: ingestError } = useIngestStatus();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [history, setHistory] = useState<QAEntry[]>([]);
@@ -485,7 +485,6 @@ export default function App() {
         onClose={() => setFileDrawerOpen(false)}
         files={files}
         progress={progress}
-        onUploaded={refresh}
         onInspectFile={(f) => {
           setFileDrawerOpen(false);
           setSelectedChunkId(null);

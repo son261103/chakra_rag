@@ -34,13 +34,33 @@ async function handle<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function listFiles(): Promise<FileEntry[]> {
-  const data = await handle<{ files: FileEntry[] }>(await fetch(`${BASE}/files`));
-  return data.files;
+/** Snapshot ingest do backend đẩy qua SSE /ingest/events. */
+export interface IngestSnapshot {
+  files: FileEntry[];
+  progress: IngestProgress;
 }
 
-export async function getProgress(): Promise<IngestProgress> {
-  return handle<IngestProgress>(await fetch(`${BASE}/ingest/progress`));
+/**
+ * Đăng ký nhận snapshot ingest qua SSE — thay cho polling: backend chỉ đẩy
+ * khi ingest thực sự đổi trạng thái. EventSource tự reconnect khi mất kết nối,
+ * server gửi lại snapshot đầu ngay sau khi nối lại nên state tự phục hồi.
+ * onError bắn khi mất kết nối (đang reconnect) để UI hiện cảnh báo.
+ * Trả về hàm đóng để useEffect cleanup.
+ */
+export function subscribeIngest(
+  onSnapshot: (data: IngestSnapshot) => void,
+  onError?: () => void
+): () => void {
+  const es = new EventSource(`${BASE}/ingest/events`);
+  es.onmessage = (ev) => {
+    try {
+      onSnapshot(JSON.parse(ev.data) as IngestSnapshot);
+    } catch {
+      // bỏ qua event lỗi parse
+    }
+  };
+  es.onerror = () => onError?.();
+  return () => es.close();
 }
 
 export async function uploadFile(file: File): Promise<{ file_id: string }> {

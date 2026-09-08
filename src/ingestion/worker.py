@@ -22,6 +22,7 @@ from pathlib import Path
 from config import Config
 from core.chunking import Chunk, chunk_markdown, chunk_plain_text
 from core.embedding import Embedder
+from ingestion.events import IngestEventBus
 from repositories import ChunkRepository, FileRepository
 
 logger = logging.getLogger(__name__)
@@ -135,6 +136,8 @@ class IngestWorker:
         self._queue: queue.Queue[Path] = queue.Queue()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
+        # SSE /ingest/events chờ trên bus này — mỗi notify() là 1 snapshot đẩy xuống UI.
+        self.events = IngestEventBus()
 
     # ---------- public API ----------
 
@@ -152,6 +155,7 @@ class IngestWorker:
         """Đăng ký file vào bảng files và đưa vào hàng đợi. Trả về file_id."""
         fid = file_id_for(path)
         self.file_repo.upsert_file(fid, path.name, source=source, status="queued")
+        self.events.notify()
         self._queue.put_nowait(path)
         logger.info("enqueue file_id=%s name=%s source=%s path=%s", fid, path.name, source, path)
         return fid
@@ -211,6 +215,7 @@ class IngestWorker:
         name = meta["name"]
         path = self.resolve_path(name)
         deleted = self.file_repo.delete_file(file_id)
+        self.events.notify()
         disk_removed = False
         if remove_disk and path is not None and path.is_file():
             # Chỉ xóa trong uploads_dir đã cấu hình — không đụng path lạ.
@@ -283,6 +288,7 @@ class IngestWorker:
                     traceback.format_exc(),
                 )
                 self.file_repo.set_file_status(fid, "failed", error=err)
+                self.events.notify()
         logger.info("ingest worker stopped")
 
     def _process_file(self, path: Path) -> None:
@@ -292,10 +298,12 @@ class IngestWorker:
         logger.info("ingest START file_id=%s name=%s suffix=%s", fid, doc_name, path.suffix.lower())
 
         self.file_repo.set_file_status(fid, "parsing")
+        self.events.notify()
         text = extract_text(path)
         logger.info("ingest parsed file_id=%s chars=%d", fid, len(text))
 
         self.file_repo.set_file_status(fid, "chunking")
+        self.events.notify()
         suffix = path.suffix.lower()
         # PDF/CV: chunk lớn hơn một chút + section theo heading ALL-CAPS (trong chunk_plain_text)
         if suffix == ".pdf":
@@ -320,6 +328,7 @@ class IngestWorker:
         if deleted:
             logger.info("ingest deleted old chunks file_id=%s removed=%d", fid, deleted)
         self.file_repo.upsert_file(fid, doc_name, status="embedding", chunks_total=len(numbered))
+        self.events.notify()
 
         done = 0
         batch_size = self.cfg.embed_batch_size
@@ -338,6 +347,7 @@ class IngestWorker:
                 )
             done += len(batch)
             self.file_repo.set_file_progress(fid, done)
+            self.events.notify()
             logger.debug(
                 "ingest embed progress file_id=%s %d/%d",
                 fid,
@@ -346,6 +356,7 @@ class IngestWorker:
             )
 
         self.file_repo.set_file_status(fid, "ready")
+        self.events.notify()
         ms = int((time.perf_counter() - t0) * 1000)
         logger.info(
             "ingest READY file_id=%s name=%s chunks=%d latency_ms=%d",
