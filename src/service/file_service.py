@@ -51,7 +51,7 @@ class FileService:
         full_text = ""
         full_text_error = None
 
-        path = self.worker.resolve_path(meta["name"], meta.get("source")) if self.worker else None
+        path = self.worker.resolve_path(meta["name"]) if self.worker else None
         if path is None:
             full_text_error = "Không tìm thấy file gốc trên đĩa"
         else:

@@ -15,7 +15,7 @@
 ## 2. Kiến trúc tổng thể
 
 ```
-data/docs/*.md (corpus nhỏ, tiếng Việt, tự soạn)
+file upload qua UI (.md/.txt/.pdf, corpus nhỏ tiếng Việt tự soạn)
         │
         ▼
  ┌─────────────┐   ┌──────────────┐   ┌────────────────────────┐
@@ -233,7 +233,7 @@ GET  /health
 ```
 
 **Luồng ingest có tiến trình:**
-- Upload lưu file vào `data/uploads/`, tạo bản ghi trong bảng `files` (SQLite): `(file_id, name, status, chunks_total, chunks_done, error)`. Corpus seed ở `data/docs/` cũng được đăng ký vào bảng này để UI hiển thị "đang có những file nào" thống nhất một chỗ.
+- Upload lưu file vào `data/uploads/`, tạo bản ghi trong bảng `files` (SQLite): `(file_id, name, status, chunks_total, chunks_done, error)` để UI hiển thị "đang có những file nào" thống nhất một chỗ.
 - State machine mỗi file: `queued → parsing → chunking → embedding → ready` (hoặc `failed` + thông báo lỗi).
 - Ingest chạy trong **worker nền 1 thread** (queue + thread) — cố tình 1 thread để tránh ghi SQLite đồng thời và để tiến trình deterministc. Sau mỗi batch embedding cập nhật `chunks_done` → UI đọc ra %.
 - Status tổng = `ready` khi mọi file đã ready → UI bật chấm xanh, cho phép chat.
@@ -305,7 +305,6 @@ chakra_rag/
 ├── requirements.txt          # langchain-core/openai/text-splitters, langgraph, pgvector, psycopg,
 │                             # sentence-transformers, fastapi, uvicorn, numpy (pin version)
 ├── .env.example              # LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, DB_URL...
-├── data/docs/*.md            # corpus seed (được đăng ký vào bảng files như file thường)
 ├── data/uploads/             # file người dùng upload qua UI
 ├── logs/                    # logs ứng dụng
 ├── src/                         # kiến trúc phân tầng, đặt trực tiếp dưới src/

@@ -43,7 +43,7 @@ LangSmith eval export: `uv run python scripts/export_eval_dataset.py --project c
 
 ## Behavioral gotchas
 
-- The API **never auto-seeds** `data/docs` — the index contains only user-uploaded files or existing database records.
+- The API **never auto-seeds** — the index contains only user-uploaded files or existing database records.
 - The only answering path is agent mode: the LLM calls tools (`search_docs` first per system prompt), so it requires a function-calling model.
 - Multi-tool traces: `search_trace` entries are tagged `name` (`search_docs`/`read_chunk`/`list_documents`); old entries without `name` are treated as search. `low_confidence` is computed from search entries only; citation evidence = chunks from any tool — search pointer entries plus the read_chunk dict including its `before`/`after` neighbor chunks (search-only chunks are hydrated with full text from the DB by `_hydrate_evidence` before verification). UI renders a distinct card per tool kind.
 - `search_docs` is pointer-first: it returns `chunk_id, doc, section, score, excerpt` (~150 chars, truncated with `…`) — never full text. Full text only comes from `read_chunk`, which returns the chunk + exactly 1 neighbor before/after in the same doc (`ChunkRepository.get_chunk_neighborhood`). Don't "simplify" this back to full text in search — that makes the LLM skip the read step entirely and bloats context with junk chunks.
@@ -54,7 +54,7 @@ LangSmith eval export: `uv run python scripts/export_eval_dataset.py --project c
 
 - `src/` (flat layout, hatchling): `core/` (RAG domain: chunking, embedding, retrieval+RRF, verification, security), `agent/` (LLM orchestration: `agent.py` LangGraph loop, `llm.py` reasoning pass-through, `tools/` — one file per tool, `@register_tool` registry; a new tool file imported in `agent/tools/__init__.py` is auto-wired via `build_tools`), `storage/` (PostgreSQL: `schema.py` = DDL bảng + index — nguồn sự thật duy nhất; `connection.py` = `Database` — SQLAlchemy engine (QueuePool, pgvector + tsvector), chạy schema lúc khởi tạo; truy vấn KHÔNG nằm ở đây), `repositories/` (truy vấn theo domain bằng SQLAlchemy Core: `ChunkRepository` chunks với pgvector + tsvector, `FileRepository` files, `ConversationRepository` conversations+messages, `IntegrationRepository` llm_integrations). Dependency direction: `agent → core`/`storage`/`repositories`, never the reverse.
 - `scripts/` is a package (`__init__.py`) — pytest `pythonpath=["."]` in `pyproject.toml` lets tests import it.
-- `data/`: `docs/` = seed corpus, `uploads/` = UI uploads.
+- `data/`: `uploads/` = UI uploads (file gốc trên đĩa, cần cho reingest + inspector; xóa qua UI xóa cả DB + đĩa).
 
 ## Conventions
 

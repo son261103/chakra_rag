@@ -75,7 +75,6 @@ class Config:
     db_name: str = "chakra_rag"
     db_url: str = ""
     db_path: Path | None = None
-    docs_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "docs")
     uploads_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "uploads")
     logs_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "logs")
     # Tham số pipeline
@@ -144,7 +143,6 @@ def get_config() -> Config:
         db_name=db_name,
         db_url=db_url,
         db_path=Path(_env("DB_PATH", "")) if _env("DB_PATH", "") else None,
-        docs_dir=Path(_env("DOCS_DIR", str(PROJECT_ROOT / "data" / "docs"))),
         uploads_dir=Path(_env("UPLOADS_DIR", str(PROJECT_ROOT / "data" / "uploads"))),
         logs_dir=Path(_env("LOGS_DIR", str(PROJECT_ROOT / "logs"))),
         chunk_size=_env_int("CHUNK_SIZE", 300),

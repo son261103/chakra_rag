@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def file_id_for(path: Path) -> str:
-    """ID ổn định theo tên file (không theo đường dẫn) để seed/upload trùng tên không đụng."""
+    """ID ổn định theo tên file (không theo đường dẫn) — trùng tên upsert cùng bản ghi."""
     return hashlib.sha1(path.name.encode("utf-8")).hexdigest()[:12]
 
 
@@ -156,19 +156,10 @@ class IngestWorker:
         logger.info("enqueue file_id=%s name=%s source=%s path=%s", fid, path.name, source, path)
         return fid
 
-    def resolve_path(self, name: str, source: str | None = None) -> Path | None:
-        """Tìm file trên đĩa theo tên (+ source gợi ý). Ưu tiên uploads rồi docs."""
-        candidates: list[Path] = []
-        if source == "seed":
-            candidates = [self.cfg.docs_dir / name, self.cfg.uploads_dir / name]
-        elif source == "upload":
-            candidates = [self.cfg.uploads_dir / name, self.cfg.docs_dir / name]
-        else:
-            candidates = [self.cfg.uploads_dir / name, self.cfg.docs_dir / name]
-        for p in candidates:
-            if p.is_file():
-                return p
-        return None
+    def resolve_path(self, name: str) -> Path | None:
+        """Tìm file gốc trên đĩa trong uploads_dir theo tên."""
+        p = self.cfg.uploads_dir / name
+        return p if p.is_file() else None
 
     def requeue_file_id(self, file_id: str) -> dict:
         """Xếp hàng nhúng lại 1 file đã có trong bảng files. Raise ValueError nếu không được."""
@@ -177,11 +168,9 @@ class IngestWorker:
             raise ValueError(f"Không tìm thấy file_id={file_id}")
         name = meta["name"]
         source = meta.get("source") or "upload"
-        path = self.resolve_path(name, source)
+        path = self.resolve_path(name)
         if path is None:
-            raise FileNotFoundError(
-                f"Không thấy file trên đĩa: {name} (đã thử uploads_dir và docs_dir)"
-            )
+            raise FileNotFoundError(f"Không thấy file gốc trên đĩa trong uploads_dir: {name}")
         if path.suffix.lower() not in self.cfg.supported_suffixes:
             raise ValueError(f"Định dạng không hỗ trợ: {path.suffix}")
         logger.info(
@@ -200,7 +189,7 @@ class IngestWorker:
         for meta in self.file_repo.list_files():
             name = meta["name"]
             source = meta.get("source") or "upload"
-            path = self.resolve_path(name, source)
+            path = self.resolve_path(name)
             if path is None:
                 logger.warning(
                     "reingest-all skip missing name=%s file_id=%s", name, meta["file_id"]
@@ -215,21 +204,20 @@ class IngestWorker:
         return {"queued": queued, "skipped": skipped}
 
     def delete_file(self, file_id: str, remove_disk: bool = True) -> dict:
-        """Xóa index + (mặc định) file trên đĩa uploads/docs. Không tự ingest gì cả."""
+        """Xóa index + (mặc định) file trên đĩa uploads. Không tự ingest gì cả."""
         meta = self.file_repo.get_file(file_id)
         if meta is None:
             raise ValueError(f"Không tìm thấy file_id={file_id}")
         name = meta["name"]
-        source = meta.get("source") or "upload"
-        path = self.resolve_path(name, source)
+        path = self.resolve_path(name)
         deleted = self.file_repo.delete_file(file_id)
         disk_removed = False
         if remove_disk and path is not None and path.is_file():
-            # Chỉ xóa trong uploads_dir / docs_dir đã cấu hình — không đụng path lạ.
-            allowed_roots = {self.cfg.uploads_dir.resolve(), self.cfg.docs_dir.resolve()}
+            # Chỉ xóa trong uploads_dir đã cấu hình — không đụng path lạ.
+            root = self.cfg.uploads_dir.resolve()
             try:
                 resolved = path.resolve()
-                if any(resolved == root or root in resolved.parents for root in allowed_roots):
+                if resolved == root or root in resolved.parents:
                     resolved.unlink()
                     disk_removed = True
             except OSError as exc:

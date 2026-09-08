@@ -55,7 +55,6 @@ DB_PASSWORD=your_password
 DB_NAME=spdb
 DB_HOST=localhost
 DB_PORT=5432
-DOCS_DIR=data/docs
 MIN_SCORE=0.25
 TOP_K=5
 MAX_AGENT_TURNS=4
@@ -78,12 +77,7 @@ Test các tầng tự viết: chunking, lưu trữ (PostgreSQL pgvector + FTS qu
 
 ## 5. Ví dụ câu hỏi demo (sau khi upload corpus qua Web UI)
 
-Corpus seed (`data/docs/`):
-
-1. `quy_dinh_hoan_phi_dao_tao.md`
-2. `chinh_sach_nghi_phep.md`
-3. `quy_dinh_bao_mat_du_lieu.md`
-4. `chuan_code_va_review.md`
+Upload trước các file tài liệu (policy nội bộ tiếng Việt) qua Web UI, rồi thử:
 
 Gợi ý 5 câu (đúng tinh thần đề 3–5 câu + trích dẫn):
 
@@ -120,7 +114,7 @@ Mỗi câu trả lời in kèm **Nguồn** dạng `[chunk_id] doc — section`. 
 ## 7. Kiến trúc (ngắn)
 
 ```
-data/docs/*.md
+file upload (.md/.txt/.pdf)
     → chunk (heading + paragraph)
     → embed (MiniLM local)
     → PostgreSQL: files + chunks (pgvector + tsvector)
@@ -179,7 +173,7 @@ cd ui && npm install && npm run dev
 
 - Upload `.md` / `.txt` từ sidebar → worker nền chunk + embed → chấm xanh khi ready  
 - Chat streaming (SSE): thinking / tool calls / answer + citation chip mở đoạn gốc  
-- **Không auto-seed** `data/docs` khi mở API: index gồm file user upload qua Web UI
+- Index chỉ gồm file user upload qua Web UI — không auto-seed gì cả
 - Đổi `.env` cần **restart** backend (`--reload` chỉ theo dõi file `.py`)
 
 ---
@@ -190,7 +184,6 @@ cd ui && npm install && npm run dev
 - LLM qua endpoint OpenAI-compatible; người chấm cần 1 key hoặc Ollama.
 - Đầu vào chính cho take-home: `.md` / `.txt` sạch (không OCR PDF scan / bảng phức tạp trong phạm vi 48h).
 - Cần model hỗ trợ function calling (agent gọi tool `search_docs`).
-- `data/docs` là corpus mẫu tham khảo. UI live index = những gì đã có trong DB sau upload của người dùng.
 - Embedding chạy local CPU; lần đầu tải model chậm hơn.
 
 ---
@@ -225,9 +218,7 @@ chakra_rag/
 │   └── observability/        # LangSmith tracing
 ├── tests/
 ├── data/
-│   ├── docs/                 # corpus tài liệu mẫu tham khảo
-│   ├── uploads/              # file upload UI (tham chiếu)
-│   └── cau_hoi_mau.txt       # gợi ý câu hỏi demo UI (không ingest)
+│   └── uploads/              # file gốc do user upload qua UI
 └── ui/                       # frontend tuỳ chọn
 ```
 

@@ -59,7 +59,7 @@ def reingest_file(file_id: str, request: Request) -> dict[str, Any]:
 
 @router.delete("/files/{file_id}")
 def delete_file(file_id: str, request: Request) -> dict[str, Any]:
-    """Xóa file khỏi index (+ file trên đĩa nếu nằm trong uploads/docs)."""
+    """Xóa file khỏi index (+ file trên đĩa nếu nằm trong uploads)."""
     service: ServiceContainer = request.app.state.service
     try:
         return service.files.delete_file(file_id, remove_disk=True)
