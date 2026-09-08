@@ -235,7 +235,7 @@ GET  /health
 - Upload lưu file vào `data/uploads/`, tạo bản ghi trong bảng `files` (SQLite): `(file_id, name, status, chunks_total, chunks_done, error)` để UI hiển thị "đang có những file nào" thống nhất một chỗ.
 - State machine mỗi file: `queued → parsing → chunking → embedding → ready` (hoặc `failed` + thông báo lỗi).
 - Ingest chạy trong **worker nền 1 thread** (queue + thread) — cố tình 1 thread để tránh ghi SQLite đồng thời và để tiến trình deterministc. Sau mỗi batch embedding cập nhật `chunks_done` → UI đọc ra %.
-- Worker gọi `events.notify()` (IngestEventBus) sau mỗi lần ghi trạng thái → endpoint SSE `GET /ingest/events` chờ tín hiệu và đẩy snapshot `{files, progress}` mới. UI nhận qua `EventSource`, **không poll** — không có request nào between các lần đổi trạng thái (chỉ keepalive 15s/lần).
+- Worker gọi `events.notify()` (IngestEventBus) sau mỗi lần ghi trạng thái → endpoint SSE `GET /ingest/events` chờ tín hiệu và đẩy snapshot `{files, progress}` mới. UI nhận qua `EventSource`, **không poll** — không có request nào giữa các lần đổi trạng thái (chỉ keepalive 15s/lần).
 - Status tổng = `ready` khi mọi file đã ready → UI bật chấm xanh.
 - Chat dùng được ngay cả khi index rỗng hoặc đang ingest: retrieval không có kết quả → `low_confidence`, agent trả lời là không tìm thấy thông tin trong tài liệu.
 - Toàn bộ tương tác upload, xem tiến trình, cấu hình tích hợp LLM và hỏi đáp đều thông qua API và Web UI.
