@@ -44,9 +44,6 @@ class AskResponseModel(BaseModel):
 @router.post("/ask", response_model=AskResponseModel)
 def ask(req: AskRequest, request: Request) -> AskResponseModel:
     service: ServiceContainer = request.app.state.service
-    progress = service.files.get_progress()
-    if progress["status"] not in ("ready", "partial"):
-        raise HTTPException(503, "Index chưa sẵn sàng — chờ ingest hoàn tất")
     if req.conversation_id and service.conversations.get_conversation(req.conversation_id) is None:
         raise HTTPException(404, "Không tìm thấy hội thoại")
     return service.chat.ask(
@@ -64,9 +61,6 @@ def ask_stream(req: AskRequest, request: Request):
     done (payload chuẩn đã verify), error.
     """
     service: ServiceContainer = request.app.state.service
-    progress = service.files.get_progress()
-    if progress["status"] not in ("ready", "partial"):
-        raise HTTPException(503, "Index chưa sẵn sàng — chờ ingest hoàn tất")
     if req.conversation_id and service.conversations.get_conversation(req.conversation_id) is None:
         raise HTTPException(404, "Không tìm thấy hội thoại")
 

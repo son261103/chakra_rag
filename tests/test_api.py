@@ -1,4 +1,4 @@
-"""FastAPI TestClient suite — index gating, upload validation, conversations CRUD-lite."""
+"""FastAPI TestClient suite — upload validation, conversations CRUD-lite, ask không chặn index."""
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -84,11 +84,23 @@ def test_upload_accepts_md(client):
     assert r.status_code == 200
     assert r.json()["file_id"] == "fid1"
 
-def test_ask_503_when_index_not_ready(client):
-    client.service.files.get_progress.return_value = {"status": "parsing"}
-    client.worker.progress.return_value = {"status": "parsing"}
+def test_ask_works_when_index_empty(client):
+    client.service.files.get_progress.return_value = {"status": "empty"}
+    client.service.chat.ask.return_value = {
+        "question": "hi?",
+        "answer": "Không tìm thấy thông tin trong tài liệu.",
+        "citations": [],
+        "invalid_citations": [],
+        "unsupported_claims": [],
+        "search_trace": [],
+        "reasoning": "",
+        "low_confidence": True,
+        "latency_ms": 5,
+        "conversation_id": None,
+    }
     r = client.post("/ask", json={"question": "hi?"})
-    assert r.status_code == 503
+    assert r.status_code == 200
+    assert r.json()["low_confidence"] is True
 
 
 def test_conversations_roundtrip(client):

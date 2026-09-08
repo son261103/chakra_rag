@@ -236,8 +236,8 @@ GET  /health
 - Upload lưu file vào `data/uploads/`, tạo bản ghi trong bảng `files` (SQLite): `(file_id, name, status, chunks_total, chunks_done, error)` để UI hiển thị "đang có những file nào" thống nhất một chỗ.
 - State machine mỗi file: `queued → parsing → chunking → embedding → ready` (hoặc `failed` + thông báo lỗi).
 - Ingest chạy trong **worker nền 1 thread** (queue + thread) — cố tình 1 thread để tránh ghi SQLite đồng thời và để tiến trình deterministc. Sau mỗi batch embedding cập nhật `chunks_done` → UI đọc ra %.
-- Status tổng = `ready` khi mọi file đã ready → UI bật chấm xanh, cho phép chat.
-- `POST /ask` trả 503 khi index chưa ready — tránh trả lời với index dở dang (chi tiết nhỏ nhưng thể hiện kiểm soát chất lượng).
+- Status tổng = `ready` khi mọi file đã ready → UI bật chấm xanh.
+- Chat dùng được ngay cả khi index rỗng hoặc đang ingest: retrieval không có kết quả → `low_confidence`, agent trả lời là không tìm thấy thông tin trong tài liệu.
 - Toàn bộ tương tác upload, xem tiến trình, cấu hình tích hợp LLM và hỏi đáp đều thông qua API và Web UI.
 
 Chạy: `uvicorn api:app`. Logic nằm hết trong service/ingestion module, API không chứa nghiệp vụ. Thêm **CORS middleware** cho phép origin của dev server Vite (`http://localhost:5173`).

@@ -30,7 +30,5 @@ export function useIngestStatus() {
     return () => clearInterval(interval);
   }, [progress?.status, refresh]);
 
-  const ready = progress?.status === "ready" || progress?.status === "partial";
-
-  return { files, progress, ready, error, refresh };
+  return { files, progress, error, refresh };
 }

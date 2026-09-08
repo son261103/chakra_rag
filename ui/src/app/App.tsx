@@ -129,7 +129,7 @@ function messagesToHistory(
 }
 
 export default function App() {
-  const { files, progress, ready, error: ingestError, refresh } = useIngestStatus();
+  const { files, progress, error: ingestError, refresh } = useIngestStatus();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [history, setHistory] = useState<QAEntry[]>([]);
@@ -426,7 +426,6 @@ export default function App() {
                       key={s.question}
                       className="suggestion-chip"
                       onClick={() => handleAsk(s.question)}
-                      disabled={!ready}
                       type="button"
                     >
                       <div className="suggestion-chip-header">
@@ -475,9 +474,7 @@ export default function App() {
         <Composer
           onAsk={handleAsk}
           onStop={handleStop}
-          disabled={!ready}
           asking={asking}
-          ready={ready}
         />
       </main>
 

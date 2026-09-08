@@ -4,13 +4,11 @@ import { ArrowUp, Square } from "lucide-react";
 interface Props {
   onAsk: (question: string) => void;
   onStop?: () => void;
-  disabled: boolean;
   asking: boolean;
-  ready: boolean;
 }
 
 /** Ô nhập câu hỏi kiểu ChatGPT: bo tròn, nút gửi chuyển thành nút Dừng (Stop) khi đang chạy. */
-export default function Composer({ onAsk, onStop, disabled, asking, ready }: Props) {
+export default function Composer({ onAsk, onStop, asking }: Props) {
   const [question, setQuestion] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -21,16 +19,14 @@ export default function Composer({ onAsk, onStop, disabled, asking, ready }: Pro
     }
   }, [question]);
 
-  // Tự động focus vào ô input khi sẵn sàng hoặc khi AI trả lời xong
+  // Tự động focus vào ô input khi mở trang hoặc khi AI trả lời xong
   useEffect(() => {
-    if (!disabled) {
-      textareaRef.current?.focus();
-    }
-  }, [disabled, asking]);
+    textareaRef.current?.focus();
+  }, [asking]);
 
   const submit = () => {
     const q = question.trim();
-    if (!q || disabled || asking) return;
+    if (!q || asking) return;
     onAsk(q);
     setQuestion("");
     if (textareaRef.current) {
@@ -55,14 +51,11 @@ export default function Composer({ onAsk, onStop, disabled, asking, ready }: Pro
             }
           }}
           placeholder={
-            !ready
-              ? "Chờ index tài liệu sẵn sàng…"
-              : asking
-                ? "Chakra AI đang phản hồi… (bạn vẫn có thể nhập tiếp)"
-                : "Nhập câu hỏi hoặc yêu cầu bất kỳ cho Chakra AI…"
+            asking
+              ? "Chakra AI đang phản hồi… (bạn vẫn có thể nhập tiếp)"
+              : "Nhập câu hỏi hoặc yêu cầu bất kỳ cho Chakra AI…"
           }
           rows={1}
-          disabled={disabled}
         />
         {asking ? (
           <button
@@ -79,7 +72,7 @@ export default function Composer({ onAsk, onStop, disabled, asking, ready }: Pro
             type="button"
             className={`send-btn ${question.trim() ? "has-text" : ""}`}
             onClick={submit}
-            disabled={disabled || !question.trim()}
+            disabled={asking || !question.trim()}
             title="Gửi (Enter)"
           >
             <ArrowUp size={17} />
