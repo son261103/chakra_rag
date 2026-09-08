@@ -6,12 +6,12 @@ INTEGRATIONS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS llm_integrations (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    provider TEXT NOT NULL DEFAULT 'openai',
-    base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
+    provider TEXT NOT NULL DEFAULT,
+    base_url TEXT NOT NULL DEFAULT,
     model TEXT NOT NULL,
-    encrypted_api_key TEXT NOT NULL DEFAULT '',
-    encrypted_dek TEXT NOT NULL DEFAULT '',
-    is_active INTEGER NOT NULL DEFAULT 0,
+    encrypted_api_key TEXT NOT NULL,
+    encrypted_dek TEXT NOT NULL,
+    is_active INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
