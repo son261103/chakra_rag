@@ -3,8 +3,8 @@
 Chọn model đa ngôn ngữ (mặc định paraphrase-multilingual-MiniLM-L12-v2, 384 chiều)
 vì corpus tiếng Việt và người chấm chạy được ngay không cần API key.
 
-Vector được chuẩn hóa L2 trước khi trả về ⇒ khoảng cách L2 trong sqlite-vec
-tương đương cosine, không phụ thuộc option distance_metric của từng phiên bản.
+Vector được chuẩn hóa L2 trước khi trả về ⇒ khoảng cách L2 trong pgvector
+tương đương cosine (<->).
 """
 
 from __future__ import annotations

@@ -39,9 +39,9 @@ class ServiceContainer:
         self.cfg = cfg or get_config()
         self.cfg.ensure_dirs()
         self.embedder = Embedder(self.cfg.embed_model)
-        # Database = SQLAlchemy engine + schema; repositories (SQLAlchemy Core)
+        # Database = SQLAlchemy engine + schema (PostgreSQL + pgvector); repositories
         # chứa truy vấn theo domain.
-        self.db = Database(self.cfg.db_path, embed_dim=self.embedder.dim)
+        self.db = Database(self.cfg.db_url or self.cfg.db_path, embed_dim=self.embedder.dim)
         self.chunk_repo = ChunkRepository(self.db)
         self.file_repo = FileRepository(self.db)
         self.conversation_repo = ConversationRepository(self.db)

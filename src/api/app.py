@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     logger.info(
         "API up db=%s uploads=%s chunks=%d files=%d "
         "(ready statuses only from previous successful ingest)",
-        cfg.db_path,
+        cfg.db_url,
         cfg.uploads_dir,
         services.chunk_repo.count_chunks(),
         len(services.file_repo.list_files()),

@@ -10,6 +10,7 @@ import os
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote_plus
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -39,6 +40,17 @@ def _env_float(key: str, default: float) -> float:
     return float(os.environ.get(key, str(default)))
 
 
+def build_db_url(
+    user: str = "postgres",
+    password: str = "",
+    host: str = "localhost",
+    port: int = 5432,
+    database: str = "chakra_rag",
+    driver: str = "postgresql+psycopg",
+) -> str:
+    """Xây dựng chuỗi kết nối PostgreSQL an toàn (URL-encoded credentials)."""
+    auth = f"{quote_plus(user)}:{quote_plus(password)}" if password else quote_plus(user)
+    return f"{driver}://{auth}@{host}:{port}/{database}"
 @dataclass(frozen=True)
 class Config:
     # LLM (OpenAI-compatible)
@@ -55,12 +67,17 @@ class Config:
     # Embedding (local)
     embed_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
-    # Đường dẫn
-    db_path: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "chakra.db")
+    # Database (PostgreSQL + pgvector)
+    db_host: str = "localhost"
+    db_port: int = 5432
+    db_user: str = "postgres"
+    db_password: str = ""
+    db_name: str = "chakra_rag"
+    db_url: str = ""
+    db_path: Path | None = None
     docs_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "docs")
     uploads_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "uploads")
     logs_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "logs")
-
     # Tham số pipeline
     chunk_size: int = 300
     chunk_overlap: int = 50
@@ -83,14 +100,33 @@ class Config:
     support_threshold: float = 0.30
 
     def ensure_dirs(self) -> None:
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.db_path is not None:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
         self.logs_dir.mkdir(parents=True, exist_ok=True)
-
 
 @lru_cache
 def get_config() -> Config:
     _load_dotenv()
+    db_user = _env("DB_USER", _env("POSTGRES_USER", "postgres"))
+    db_password = _env("DB_PASSWORD", _env("POSTGRES_PASSWORD", ""))
+    db_name = _env("DB_NAME", _env("POSTGRES_DB", "chakra_rag"))
+    db_host = _env("DB_HOST", _env("POSTGRES_HOST", "localhost"))
+    db_port = _env_int("DB_PORT", _env_int("POSTGRES_PORT", 5432))
+
+    raw_db_url = _env("DB_URL", _env("DATABASE_URL", ""))
+    if raw_db_url:
+        db_url = raw_db_url
+        if db_url.startswith("postgresql://"):
+            db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    else:
+        db_url = build_db_url(
+            user=db_user,
+            password=db_password,
+            host=db_host,
+            port=db_port,
+            database=db_name,
+        )
     cfg = Config(
         llm_base_url=_env("LLM_BASE_URL", "https://api.openai.com/v1"),
         llm_api_key=_env("LLM_API_KEY", ""),
@@ -101,7 +137,13 @@ def get_config() -> Config:
             "EMBED_MODEL",
             "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         ),
-        db_path=Path(_env("DB_PATH", str(PROJECT_ROOT / "data" / "chakra.db"))),
+        db_host=db_host,
+        db_port=db_port,
+        db_user=db_user,
+        db_password=db_password,
+        db_name=db_name,
+        db_url=db_url,
+        db_path=Path(_env("DB_PATH", "")) if _env("DB_PATH", "") else None,
         docs_dir=Path(_env("DOCS_DIR", str(PROJECT_ROOT / "data" / "docs"))),
         uploads_dir=Path(_env("UPLOADS_DIR", str(PROJECT_ROOT / "data" / "uploads"))),
         logs_dir=Path(_env("LOGS_DIR", str(PROJECT_ROOT / "logs"))),

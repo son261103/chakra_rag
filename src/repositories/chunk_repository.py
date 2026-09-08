@@ -1,60 +1,42 @@
-"""Truy vấn chunk: bảng `chunks` + vec0 (`vec_chunks`) + FTS5 (`fts_chunks`).
+"""Truy vấn chunk: bảng `chunks` tích hợp pgvector và PostgreSQL Full-Text Search (tsvector).
 
 Viết bằng SQLAlchemy Core (bảng `chunks` reflect từ DB — schema.py là nguồn
-DDL duy nhất, không duplicate định nghĩa). Riêng vec0/FTS5 là extension không
-mô hình hóa được bằng expression → giữ `text()` cho MATCH và ghi/xóa virtual
-table. DDL tương ứng nằm ở storage/schema.py.
+DDL duy nhất, không duplicate định nghĩa).
+Vector search dùng toán tử khoảng cách L2 của pgvector (<->).
+Lexical search dùng tsvector với ts_rank.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import numpy as np
+from pgvector.sqlalchemy import Vector  # noqa: F401
 from sqlalchemy import MetaData, Table, and_, delete, func, insert, or_, select
 from sqlalchemy import text as sql_text
 
 from storage.connection import Database
 
 
-def _serialize(vector: np.ndarray) -> bytes:
-    return np.asarray(vector, dtype=np.float32).tobytes()
-
-
 def _fts_escape(query: str) -> str:
-    """Biến query tự do thành FTS5 query an toàn: mỗi token thành một phrase.
-
-    FTS5 unicode61 không tách từ tiếng Việt hoàn hảo, nhưng bắt exact term tốt;
-    nối các token bằng OR để không bỏ sót kết quả khi một token không khớp.
-    """
-    tokens = [t for t in query.replace('"', " ").split() if t]
+    """Biến query tự do thành tsquery an toàn với các từ khóa phân tách bởi OR (|)."""
+    cleaned = re.sub(r"[^\w\s]", " ", query)
+    tokens = [t.strip() for t in cleaned.split() if t.strip()]
     if not tokens:
         return ""
-    return " OR ".join(f'"{t}"' for t in tokens)
+    return " | ".join(f"'{t}'" for t in tokens)
 
 
 def _delete_chunk_rows(conn, chunks_table: Table, rowids: list[int]) -> None:
-    """Xóa hàng chunk ở cả 3 chỉ mục (chunks + vec_chunks + fts_chunks).
-
-    Chạy trong transaction của `conn` đang mở — dùng chung cho xóa theo doc
-    (ChunkRepository) và xóa file kèm chunk (FileRepository) để khỏi duplicate.
-    vec/fts là virtual table nên xóa qua text().
-    """
+    """Xóa các hàng chunk theo danh sách id."""
     if not rowids:
         return
-    placeholders = ", ".join(f":id{i}" for i in range(len(rowids)))
-    params = {f"id{i}": value for i, value in enumerate(rowids)}
-    conn.execute(
-        sql_text(f"DELETE FROM vec_chunks WHERE rowid IN ({placeholders})"), params
-    )
-    conn.execute(
-        sql_text(f"DELETE FROM fts_chunks WHERE rowid IN ({placeholders})"), params
-    )
     conn.execute(delete(chunks_table).where(chunks_table.c.id.in_(rowids)))
 
 
 class ChunkRepository:
-    """Truy vấn chunk + chỉ mục tìm kiếm (vector & lexical) trên một `Database`."""
+    """Truy vấn chunk + chỉ mục tìm kiếm (vector pgvector & lexical FTS) trên một `Database`."""
 
     def __init__(self, db: Database):
         self.db = db
@@ -74,7 +56,8 @@ class ChunkRepository:
         char_end: int,
         embedding: np.ndarray,
     ) -> int:
-        """Thêm 1 chunk vào cả 3 chỉ mục. Trả về rowid."""
+        """Thêm 1 chunk vào bảng chunks (pgvector + FTS tự động). Trả về id."""
+        emb_val = embedding.tolist() if isinstance(embedding, np.ndarray) else embedding
         with self.db.engine.begin() as conn:
             rowid = conn.execute(
                 insert(self.chunks)
@@ -85,54 +68,57 @@ class ChunkRepository:
                     text=text,
                     char_start=char_start,
                     char_end=char_end,
+                    embedding=emb_val,
                 )
                 .returning(self.chunks.c.id)
             ).scalar_one()
-            conn.execute(
-                sql_text("INSERT INTO vec_chunks (rowid, embedding) VALUES (:rowid, :embedding)"),
-                {"rowid": rowid, "embedding": _serialize(embedding)},
-            )
-            conn.execute(
-                sql_text("INSERT INTO fts_chunks (rowid, text) VALUES (:rowid, :text)"),
-                {"rowid": rowid, "text": text},
-            )
         return rowid
 
     def delete_chunks_by_doc(self, doc: str) -> int:
         """Xóa toàn bộ chunk của một tài liệu (dùng khi ingest lại file)."""
         with self.db.engine.begin() as conn:
-            rowids = conn.execute(
-                select(self.chunks.c.id).where(self.chunks.c.doc == doc)
-            ).scalars().all()
-            if not rowids:
-                return 0
-            _delete_chunk_rows(conn, self.chunks, rowids)
-        return len(rowids)
+            result = conn.execute(delete(self.chunks).where(self.chunks.c.doc == doc))
+        return result.rowcount
 
     def get_chunk(self, chunk_id: str) -> dict[str, Any] | None:
+        cols = (
+            self.chunks.c.id,
+            self.chunks.c.chunk_id,
+            self.chunks.c.doc,
+            self.chunks.c.section,
+            self.chunks.c.text,
+            self.chunks.c.char_start,
+            self.chunks.c.char_end,
+        )
         with self.db.engine.connect() as conn:
             row = conn.execute(
-                select(self.chunks).where(self.chunks.c.chunk_id == chunk_id)
+                select(*cols).where(self.chunks.c.chunk_id == chunk_id)
             ).mappings().first()
         return dict(row) if row else None
 
     def get_chunk_neighborhood(self, chunk_id: str) -> dict[str, Any] | None:
         """Chunk được hỏi + đúng 1 chunk kề trước/sau trong cùng tài liệu.
 
-        read_chunk dùng điều này để trả cả vùng ngữ cảnh (đúng tinh thần
-        Read của Claude Code): chunk dễ cắt lỡ câu, ngữ cảnh kề giúp LLM
-        hiểu trọn ý mà không phải nạp cả tài liệu. Trả None khi chunk_id
-        không tồn tại.
+        read_chunk dùng điều này để trả cả vùng ngữ cảnh:
+        chunk dễ cắt lỡ câu, ngữ cảnh kề giúp LLM hiểu trọn ý mà không
+        phải nạp cả tài liệu. Trả None khi chunk_id không tồn tại.
         """
+        cols = (
+            self.chunks.c.id,
+            self.chunks.c.chunk_id,
+            self.chunks.c.doc,
+            self.chunks.c.section,
+            self.chunks.c.text,
+            self.chunks.c.char_start,
+            self.chunks.c.char_end,
+        )
         with self.db.engine.connect() as conn:
             center_row = conn.execute(
-                select(self.chunks).where(self.chunks.c.chunk_id == chunk_id)
+                select(*cols).where(self.chunks.c.chunk_id == chunk_id)
             ).mappings().first()
             if center_row is None:
                 return None
             center = dict(center_row)
-            # So khớp "(char_start, id) < (?, ?)" — tuple-compare của SQLite
-            # tương đương char_start nhỏ hơn, hoặc bằng mà id nhỏ hơn.
             before_cond = or_(
                 self.chunks.c.char_start < center["char_start"],
                 and_(
@@ -147,20 +133,20 @@ class ChunkRepository:
                     self.chunks.c.id > center["id"],
                 ),
             )
-            cols = (
+            before_cols = (
                 self.chunks.c.chunk_id,
                 self.chunks.c.doc,
                 self.chunks.c.section,
                 self.chunks.c.text,
             )
             before = conn.execute(
-                select(*cols)
+                select(*before_cols)
                 .where(self.chunks.c.doc == center["doc"], before_cond)
                 .order_by(self.chunks.c.char_start.desc(), self.chunks.c.id.desc())
                 .limit(1)
             ).mappings().all()
             after = conn.execute(
-                select(*cols)
+                select(*before_cols)
                 .where(self.chunks.c.doc == center["doc"], after_cond)
                 .order_by(self.chunks.c.char_start.asc(), self.chunks.c.id.asc())
                 .limit(1)
@@ -192,50 +178,52 @@ class ChunkRepository:
 
     def count_chunks(self) -> int:
         with self.db.engine.connect() as conn:
-            return conn.scalar(select(func.count()).select_from(self.chunks))
+            return conn.scalar(select(func.count()).select_from(self.chunks)) or 0
 
     # ---------- vector search ----------
 
     def vector_search(self, query_embedding: np.ndarray, top_k: int) -> list[dict[str, Any]]:
-        """KNN bằng khoảng cách L2 (vector đã chuẩn hóa ⇒ tương đương cosine).
+        """KNN bằng khoảng cách L2 qua pgvector (<->).
 
-        Corpus nhỏ nên brute-force quét tuyến tính là lựa chọn đúng,
-        không cần ANN index. MATCH của vec0 không viết bằng expression được.
+        Vector đã chuẩn hóa L2 ⇒ khoảng cách L2 ∈ [0, 2] tương đương cosine.
         """
+        emb_val = (
+            query_embedding.tolist()
+            if isinstance(query_embedding, np.ndarray)
+            else query_embedding
+        )
         sql = """
-        SELECT c.chunk_id, c.doc, c.section, c.text, c.char_start, c.char_end,
-               v.distance
-        FROM vec_chunks v
-        JOIN chunks c ON c.id = v.rowid
-        WHERE v.embedding MATCH :vec AND v.k = :k
-        ORDER BY v.distance
+        SELECT chunk_id, doc, section, text, char_start, char_end,
+               (embedding <-> :vec) AS distance
+        FROM chunks
+        ORDER BY distance ASC
+        LIMIT :k
         """
         with self.db.engine.connect() as conn:
             rows = conn.execute(
-                sql_text(sql), {"vec": _serialize(query_embedding), "k": top_k}
+                sql_text(sql), {"vec": str(emb_val), "k": top_k}
             ).mappings().all()
         results = []
         for row in rows:
             item = dict(row)
             # distance L2 của vector chuẩn hóa ∈ [0, 2] → similarity ∈ [0, 1]
-            item["score"] = 1.0 - item.pop("distance") / 2.0
+            item["score"] = 1.0 - float(item.pop("distance")) / 2.0
             results.append(item)
         return results
 
     # ---------- lexical search ----------
 
     def fts_search(self, query: str, top_k: int) -> list[dict[str, Any]]:
-        """BM25 trên FTS5. Escape query để tránh lỗi cú pháp FTS5."""
+        """Tìm kiếm lexical bằng PostgreSQL Full-Text Search (tsvector + ts_rank)."""
         safe_query = _fts_escape(query)
         if not safe_query:
             return []
         sql = """
-        SELECT c.chunk_id, c.doc, c.section, c.text, c.char_start, c.char_end,
-               bm25(fts_chunks) AS rank
-        FROM fts_chunks
-        JOIN chunks c ON c.id = fts_chunks.rowid
-        WHERE fts_chunks MATCH :query
-        ORDER BY rank
+        SELECT chunk_id, doc, section, text, char_start, char_end,
+               ts_rank(tsv, to_tsquery('simple', :query)) AS rank
+        FROM chunks
+        WHERE tsv @@ to_tsquery('simple', :query)
+        ORDER BY rank DESC
         LIMIT :k
         """
         with self.db.engine.connect() as conn:

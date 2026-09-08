@@ -1,3 +1,3 @@
-"""Chakra RAG — pipeline RAG nhỏ: sqlite-vec + FTS5 + LangGraph agent."""
+"""Chakra RAG — pipeline RAG: PostgreSQL + pgvector + LangGraph agent."""
 
 __version__ = "0.1.0"

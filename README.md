@@ -6,7 +6,7 @@
 |---|---|
 | Chia nhỏ tài liệu | Heading + paragraph chunking (~300 token, overlap 50), giữ metadata nguồn |
 | Tạo embeddings | `paraphrase-multilingual-MiniLM-L12-v2` (local, 384d, L2-normalize) |
-| Truy xuất | Hybrid: vector (`sqlite-vec`) + lexical (FTS5) → Reciprocal Rank Fusion |
+| Truy xuất | Hybrid: vector (`pgvector`) + lexical (PostgreSQL FTS) → Reciprocal Rank Fusion |
 | Trả lời + trích dẫn | Agent gọi tool `search_docs` → `read_chunk` (LangGraph); mỗi claim kèm `[chunk_id]` |
 | Hạn chế hallucination | Retrieval gate + prompt ràng buộc + citation verifier độc lập LLM |
 | Mã chạy được + hướng dẫn | README này + API / Web UI kèm tài liệu chi tiết |
@@ -43,23 +43,25 @@ cd ui && npm install && npm run dev
 
 > **Cấu hình Model & API Key:**
 > Model và API Key được cấu hình trực tiếp trên Web UI thông qua nút **Cài đặt LLM** ở Sidebar.
-> API Key được mã hóa an toàn bằng cơ chế **Envelope Encryption (KEK / DEK)** trước khi lưu vào SQLite, không cần lưu thô trong `.env`.
-
+> API Key được mã hóa an toàn bằng cơ chế **Envelope Encryption (KEK / DEK)** trước khi lưu vào Database, không cần lưu thô trong `.env`.
 ### Cấu hình `.env` (rút gọn)
 ```env
 # Khóa chủ KEK để mã hóa DEK của từng tích hợp (Model & API Key cấu hình trên UI)
 ENCRYPTION_KEY=zkniEH7RPIWhK3rtbR96-iqV30JHsnBZ_qnP2xofJcU=
 
 EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-DB_PATH=data/chakra.db
+DB_USER=admin
+DB_PASSWORD=your_password
+DB_NAME=spdb
+DB_HOST=localhost
+DB_PORT=5432
 DOCS_DIR=data/docs
 MIN_SCORE=0.25
 TOP_K=5
 MAX_AGENT_TURNS=4
 ```
 
-Lần đầu chạy embedding model sẽ **tải về máy** (cần mạng). DB nằm tại `data/chakra.db` (một file SQLite).
-
+Lần đầu chạy embedding model sẽ **tải về máy** (cần mạng). Database sử dụng PostgreSQL với extension `vector` (pgvector).
 ---
 
 ## 4. Kiểm tra chất lượng
@@ -70,7 +72,7 @@ Lần đầu chạy embedding model sẽ **tải về máy** (cần mạng). DB 
 uv run pytest tests/ -v        # hoặc (pip-only): PYTHONPATH=src python -m pytest tests/ -v
 ```
 
-Test các tầng tự viết: chunking, lưu trữ (sqlite-vec + FTS5 qua repository), retrieve (RRF), citation verify, ingest.
+Test các tầng tự viết: chunking, lưu trữ (PostgreSQL pgvector + FTS qua repository), retrieve (RRF), citation verify, ingest.
 
 ---
 
@@ -121,12 +123,12 @@ Mỗi câu trả lời in kèm **Nguồn** dạng `[chunk_id] doc — section`. 
 data/docs/*.md
     → chunk (heading + paragraph)
     → embed (MiniLM local)
-    → SQLite: files + chunks + vec0 (sqlite-vec) + FTS5
+    → PostgreSQL: files + chunks (pgvector + tsvector)
 
 câu hỏi
     → agent (LangGraph create_react_agent, max 4 lượt)
          tools: search_docs (chính) + read_chunk + list_documents
-         search_docs: hybrid vector top-k + FTS5 top-k → RRF → threshold
+         search_docs: hybrid vector top-k + FTS top-k → RRF → threshold
                       → trả chunk_id + excerpt ~150 ký tự (pointer-first)
          read_chunk:  đọc full text đoạn được chọn + 1 đoạn kề trước/sau
     → LLM trả lời + [chunk_id]
@@ -151,7 +153,7 @@ src/
   agent/         # lớp LLM orchestration: agent (vòng lặp LangGraph), llm, tools/ (mỗi tool một file)
   api/           # fastapi app + modular routers (chat, files, conversations, integrations, health)
   core/          # domain RAG: chunking, embedding, retrieval, verification, security (KEK/DEK)
-  storage/       # SQLite: schema.py (DDL) + connection.py (Database = SQLAlchemy engine)
+  storage/       # Database: schema.py (DDL PostgreSQL + pgvector) + connection.py (SQLAlchemy engine)
   repositories/  # truy vấn theo domain bằng SQLAlchemy Core (chunk/search, file, conversation, integration)
   ingestion/     # worker ingest
   service/       # domain services (chat, conversation, file, integration) + container

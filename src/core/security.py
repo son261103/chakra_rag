@@ -3,7 +3,7 @@
 Cơ chế:
 1. KEK (Key Encryption Key): Khóa mã hóa chủ được lưu trong biến môi trường `ENCRYPTION_KEY` (.env).
 2. DEK (Data Encryption Key): Mỗi tích hợp sinh một khóa ngẫu nhiên riêng (Fernet key).
-3. Trong bảng SQLite:
+3. Trong bảng database:
    - `encrypted_dek`: Khóa giải mã DEK của tích hợp đó, được mã hóa bằng KEK từ .env.
    - `encrypted_api_key`: API key của tích hợp đó, được mã hóa bằng DEK.
 4. Khi sử dụng:

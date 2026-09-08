@@ -1,9 +1,7 @@
 """Truy vấn bảng `files`: trạng thái ingest từng file (phục vụ UI danh sách + %).
 
 SQLAlchemy Core; bảng reflect từ DB (schema.py là nguồn DDL duy nhất).
-`delete_file` có cascade sang chunk (vec/fts) trong cùng transaction — việc xóa
-doc gắn với vòng đời file nên giữ trọn ở đây thay vì tách nửa vời sang
-ChunkRepository. Xóa vec/fts vẫn là `text()` vì virtual table.
+`delete_file` có cascade xóa chunk trong cùng transaction.
 """
 
 from __future__ import annotations
@@ -11,10 +9,8 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import MetaData, Table, delete, select, update
-from sqlalchemy import text as sql_text
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from repositories.chunk_repository import _delete_chunk_rows
 from storage.connection import Database
 
 
@@ -35,7 +31,7 @@ class FileRepository:
         status: str = "queued",
         chunks_total: int = 0,
     ) -> None:
-        stmt = sqlite_insert(self.files).values(
+        stmt = pg_insert(self.files).values(
             file_id=file_id,
             name=name,
             source=source,
@@ -74,7 +70,7 @@ class FileRepository:
     def list_files(self) -> list[dict[str, Any]]:
         with self.db.engine.connect() as conn:
             rows = conn.execute(
-                select(self.files).order_by(sql_text("rowid"))
+                select(self.files).order_by(self.files.c.file_id.asc())
             ).mappings().all()
         return [dict(row) for row in rows]
 
@@ -95,23 +91,21 @@ class FileRepository:
                 return None
             meta = dict(row)
             doc = meta["name"]
-            rowids = conn.execute(
-                select(self.chunks.c.id).where(self.chunks.c.doc == doc)
-            ).scalars().all()
-            _delete_chunk_rows(conn, self.chunks, rowids)
+            res = conn.execute(delete(self.chunks).where(self.chunks.c.doc == doc))
             conn.execute(delete(self.files).where(self.files.c.file_id == file_id))
-        meta["chunks_removed"] = len(rowids)
+        meta["chunks_removed"] = res.rowcount
         return meta
 
     def fail_interrupted_ingests(self) -> int:
         """Đánh failed các job dở (queued/parsing/…) sau restart — không tự nhúng lại."""
+        transient_statuses = ("queued", "parsing", "chunking", "embedding")
         with self.db.engine.begin() as conn:
             result = conn.execute(
                 update(self.files)
-                .where(self.files.c.status.in_(("queued", "parsing", "chunking", "embedding")))
+                .where(self.files.c.status.in_(transient_statuses))
                 .values(
                     status="failed",
-                    error="Bị gián đoạn khi server dừng — bấm Nhúng lại RAG",
+                    error="Bị gián đoạn do server restart (không tự nhúng lại)",
                 )
             )
         return result.rowcount

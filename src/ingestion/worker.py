@@ -1,7 +1,7 @@
 """Ingest: parse file → chunk → embed → ghi vào database (qua repository), có tiến trình.
 
 Chạy trong worker nền 1 thread (queue + thread) để:
-- tránh ghi SQLite đồng thời,
+- quản lý ghi database tuần tự và ổn định,
 - tiến trình embedding deterministic (UI đọc % qua bảng `files`).
 
 State machine mỗi file: queued → parsing → chunking → embedding → ready | failed.

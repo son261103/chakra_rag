@@ -9,7 +9,6 @@ import json
 from typing import Any
 
 from sqlalchemy import MetaData, Table, delete, func, insert, select, update
-from sqlalchemy import text as sql_text
 
 from repositories.common import new_id, utcnow_iso
 from storage.connection import Database
@@ -83,7 +82,7 @@ class ConversationRepository:
 
     def delete_conversation(self, conversation_id: str) -> bool:
         with self.db.engine.begin() as conn:
-            # SQLite FK cascade cần PRAGMA; xóa messages thủ công cho chắc.
+            # Xóa messages và conversation trong cùng transaction
             conn.execute(
                 delete(self.messages).where(self.messages.c.conversation_id == conversation_id)
             )
@@ -140,7 +139,7 @@ class ConversationRepository:
                 self.messages.c.created_at,
             )
             .where(self.messages.c.conversation_id == conversation_id)
-            .order_by(self.messages.c.created_at, sql_text("rowid"))
+            .order_by(self.messages.c.created_at.asc(), self.messages.c.seq.asc())
         )
         with self.db.engine.connect() as conn:
             rows = conn.execute(stmt).mappings().all()

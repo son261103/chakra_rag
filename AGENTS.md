@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Vietnamese-language RAG take-home project: hybrid retrieval (sqlite-vec + FTS5 → Reciprocal Rank Fusion), LangGraph agent with tools (`search_docs`, `read_chunk`, `list_documents` via the `agent/tools/` registry), and a code-level citation verifier. Optional React/Vite UI in `ui/`. `DESIGN.md` is the authoritative design rationale; `README.md` covers user-facing setup.
+Vietnamese-language RAG take-home project: hybrid retrieval (PostgreSQL pgvector + FTS → Reciprocal Rank Fusion), LangGraph agent with tools (`search_docs`, `read_chunk`, `list_documents` via the `agent/tools/` registry), and a code-level citation verifier. Optional React/Vite UI in `ui/`. `DESIGN.md` is the authoritative design rationale; `README.md` covers user-facing setup.
 
 ## Commands
 
@@ -52,9 +52,9 @@ LangSmith eval export: `uv run python scripts/export_eval_dataset.py --project c
 
 ## Structure
 
-- `src/` (flat layout, hatchling): `core/` (RAG domain: chunking, embedding, retrieval+RRF, verification, security), `agent/` (LLM orchestration: `agent.py` LangGraph loop, `llm.py` reasoning pass-through, `tools/` — one file per tool, `@register_tool` registry; a new tool file imported in `agent/tools/__init__.py` is auto-wired via `build_tools`), `storage/` (SQLite: `schema.py` = DDL bảng + index — nguồn sự thật duy nhất; `connection.py` = `Database` — SQLAlchemy engine (NullPool, sqlite-vec load trên từng connection, timeout 30s), chạy schema lúc khởi tạo; truy vấn KHÔNG nằm ở đây), `repositories/` (truy vấn theo domain bằng SQLAlchemy Core, bảng reflect từ DB: `ChunkRepository` chunks+vec0+FTS5, `FileRepository` files, `ConversationRepository` conversations+messages, `IntegrationRepository` llm_integrations — mọi CRUD là Core expression; chỉ vec0/FTS5 (MATCH, virtual table) giữ `text()` vì extension không mô hình hóa được), `ingestion/`, `observability/` (LangSmith), `service/` (domain services + `container`), `api/` (FastAPI `app.py` + modular `routes/`), `config.py`. Dependency direction: `agent → core`/`storage`/`repositories`, never the reverse.
+- `src/` (flat layout, hatchling): `core/` (RAG domain: chunking, embedding, retrieval+RRF, verification, security), `agent/` (LLM orchestration: `agent.py` LangGraph loop, `llm.py` reasoning pass-through, `tools/` — one file per tool, `@register_tool` registry; a new tool file imported in `agent/tools/__init__.py` is auto-wired via `build_tools`), `storage/` (PostgreSQL: `schema.py` = DDL bảng + index — nguồn sự thật duy nhất; `connection.py` = `Database` — SQLAlchemy engine (QueuePool, pgvector + tsvector), chạy schema lúc khởi tạo; truy vấn KHÔNG nằm ở đây), `repositories/` (truy vấn theo domain bằng SQLAlchemy Core: `ChunkRepository` chunks với pgvector + tsvector, `FileRepository` files, `ConversationRepository` conversations+messages, `IntegrationRepository` llm_integrations). Dependency direction: `agent → core`/`storage`/`repositories`, never the reverse.
 - `scripts/` is a package (`__init__.py`) — pytest `pythonpath=["."]` in `pyproject.toml` lets tests import it.
-- `data/`: `docs/` = seed corpus, `uploads/` = UI uploads, `chakra.db` = runtime artifact (gitignored — don't commit DBs, uploads, or logs).
+- `data/`: `docs/` = seed corpus, `uploads/` = UI uploads.
 
 ## Conventions
 

@@ -1,7 +1,7 @@
 [project]
 name = "chakra-rag"
 version = "0.1.0"
-description = "RAG pipeline nhỏ: sqlite-vec + FTS5 + LangGraph agent, cho bài test AI Engineer"
+description = "RAG pipeline: PostgreSQL + pgvector + LangGraph agent"
 requires-python = ">=3.11"
 dependencies = [
     "langchain-core",
@@ -9,7 +9,6 @@ dependencies = [
     "langchain-text-splitters",
     "langgraph",
     "langgraph-prebuilt",
-    "sqlite-vec",
     "sentence-transformers",
     "fastapi",
     "uvicorn[standard]",
@@ -17,11 +16,12 @@ dependencies = [
     "python-multipart",
     "pypdf",
     "sqlalchemy",
-    # Declared explicitly (previously only transitive / in requirements.txt):
-    "openai",        # client SDK used indirectly by langchain-openai; pin visibility
-    "pydantic>=2",   # models used by api layer
-    "langsmith>=0.11.1,<1.0",  # direct SDK usage: Client/@traceable/ls.trace
-    "cryptography>=50.0.1",
+    "openai", 
+    "pydantic",
+    "langsmith",  
+    "cryptography",
+    "pgvector",
+    "psycopg[binary]",
 ]
 
 [tool.uv]

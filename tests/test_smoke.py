@@ -1,6 +1,6 @@
 """Smoke tests: chạy không cần LLM, chỉ cần embedding model (tải 1 lần).
 
-Test các tầng tự viết: chunking, lưu trữ (sqlite-vec + FTS5 qua repository), retrieve (RRF),
+Test các tầng tự viết: chunking, lưu trữ (PostgreSQL pgvector + FTS qua repository), retrieve (RRF),
 verify (citation check), ingest. Đây là phần nghiệp vụ chấm điểm nên phải có test.
 """
 
@@ -127,6 +127,16 @@ def test_delete_chunks_by_doc(chunks, embedder):
     chunks.delete_chunks_by_doc("a.md")
     assert chunks.count_chunks() == 0
 
+
+def test_postgres_fts_search_special_chars(chunks, embedder):
+    vec = embedder.embed_one("nội dung")
+    chunks.insert_chunk(
+        "p#s#1", "doc.md", "sec", "Chính sách: hoàn phí 5.000.000đ (5 triệu)!", 0, 45, vec
+    )
+    # Query with punctuation and special chars should not crash and should find match
+    res = chunks.fts_search("hoàn phí: 5 triệu?", top_k=5)
+    assert len(res) == 1
+    assert res[0]["chunk_id"] == "p#s#1"
 
 # ---------- retrieve ----------
 

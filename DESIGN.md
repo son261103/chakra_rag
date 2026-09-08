@@ -19,11 +19,11 @@ data/docs/*.md (corpus nhỏ, tiếng Việt, tự soạn)
         │
         ▼
  ┌─────────────┐   ┌──────────────┐   ┌────────────────────────┐
- │  Chunking   │──▶│  Embedding   │──▶│  SQLite                │
- │ (section +  │   │ (multilingual│   │  - chunks: text+meta   │
- │  paragraph, │   │  MiniLM 384d)│   │  - vec_chunks: vec0    │
- │  ~300 tok,  │   └──────────────┘   │  - fts_chunks: FTS5    │
- │  overlap 50)│                      └────────────────────────┘
+│  Chunking   │──▶│  Embedding   │──▶│  PostgreSQL            │
+│ (section +  │   │ (multilingual│   │  - chunks: text+meta   │
+│  paragraph, │   │  MiniLM 384d)│   │  - embedding: pgvector │
+│  ~300 tok,  │   └──────────────┘   │  - tsv: tsvector (FTS) │
+│  overlap 50)│                      └────────────────────────┘
  └─────────────┘                                │
                                                 ▼
  question ─────────────────────────────────────────────────────┐
@@ -71,7 +71,7 @@ Lối vào: **FastAPI** (`POST /ask`) theo chuẩn RESTful API. Phía trên là 
 │                  /chunks/{id} /health                      │
 └───────────────▲────────────────────────────────────────────┘
                 │
-   ingest worker (nền): parse → chunk → embed → SQLite
+   ingest worker (nền): parse → chunk → embed → PostgreSQL
    pipeline.ask(question) → agent loop ⇄ search_docs tool
 ```
 
@@ -95,22 +95,27 @@ Lối vào: **FastAPI** (`POST /ask`) theo chuẩn RESTful API. Phía trên là 
 
 ### 3.3 Embedding: model đa ngôn ngữ chạy local
 - Mặc định: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 chiều) — chạy offline, không cần API key, người chấm chạy được ngay; hỗ trợ tiếng Việt tốt ở quy mô này.
-- Chuẩn hóa L2 vector trước khi lưu ⇒ khoảng cách L2 tương đương cosine, khỏi phụ thuộc option `distance_metric` của từng bản sqlite-vec.
+- Chuẩn hóa L2 vector trước khi lưu ⇒ khoảng cách L2 tương đương cosine (<-> trong pgvector).
 - Cấu hình được qua env (đổi sang OpenAI embedding nếu muốn) nhưng default không cần key.
 
-### 3.4 Vector store: SQLite + sqlite-vec (đúng lựa chọn của bạn)
+### 3.4 Vector store: PostgreSQL + pgvector
 Vì sao hợp với bài này:
-- Corpus vài chục chunk → brute-force KNN là đủ, sqlite-vec quét tuyến tính là đúng chứ không phải "chữa cháy".
-- Một file DB duy nhất, không hạ tầng; vector (`vec0`), metadata (bảng thường), và lexical (`FTS5`) **nằm cùng một database** → join ra citation rất gọn, transactional.
+- Vector (`vector`), metadata (bảng thường), và lexical (`tsvector`) **nằm cùng một database** → lưu trữ và truy vấn rất gọn, transactional.
 - Schema:
   ```sql
-  CREATE TABLE chunks(id INTEGER PRIMARY KEY, chunk_id TEXT UNIQUE,
-                      doc TEXT, section TEXT, text TEXT,
-                      char_start INT, char_end INT);
-  CREATE VIRTUAL TABLE vec_chunks USING vec0(embedding float[384]);  -- rowid = chunks.id
-  CREATE VIRTUAL TABLE fts_chunks USING fts5(text, content='chunks', content_rowid='id');
+  CREATE TABLE chunks (
+      id BIGSERIAL PRIMARY KEY,
+      chunk_id TEXT UNIQUE NOT NULL,
+      doc TEXT NOT NULL,
+      section TEXT NOT NULL,
+      text TEXT NOT NULL,
+      char_start INTEGER NOT NULL,
+      char_end INTEGER NOT NULL,
+      embedding vector(384) NOT NULL,
+      tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', text)) STORED
+  );
   ```
-- Lưu ý: `pip sqlite-vec` bundle sẵn extension cho Linux x64; extension phải load trên TỪNG connection (engine pool NullPool → sự kiện `connect`). Phần DDL tách riêng ở `storage/schema.py` (nguồn duy nhất); `storage/connection.py` (`Database`) tạo SQLAlchemy engine + chạy schema; repository (`repositories/`) viết bằng SQLAlchemy Core — bảng reflect từ DB, chỉ vec0/FTS5 giữ `text()`.
+- DDL quản lý tại `storage/schema.py`; `storage/connection.py` (`Database`) tạo SQLAlchemy engine; repository (`repositories/`) viết bằng SQLAlchemy Core.
 
 ### 3.5 Retrieval: hybrid vector + lexical, fusion bằng RRF
 - Vector bắt nghĩa tốt nhưng hay trượt **từ khóa chính xác** (tên riêng, con số, mã hiệu — ví dụ "mức hoàn phí tối đa 5 triệu"). FTS5 bù đúng chỗ đó. Với tiếng Việt, FTS5 unicode61 không tách từ hoàn hảo nhưng vẫn bắt exact term tốt.
@@ -278,7 +283,7 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 
 **Stack cuối cùng:**
 - `langchain-core`, `langchain-openai`, `langchain-text-splitters`, `langgraph` — agent + chunking + LLM.
-- `sqlite-vec` — vector store (tự viết lớp truy cập).
+- `pgvector`, `psycopg` — vector store và PostgreSQL driver.
 - `sentence-transformers` — embedding local, không cần key.
 - `fastapi` + `uvicorn` — API.
 - `pypdf` (tùy chọn) — nhận thêm PDF; mặc định chỉ `.md/.txt`.
@@ -297,9 +302,9 @@ Phòng thủ nhiều lớp:
 chakra_rag/
 ├── README.md                 # cách chạy, quyết định thiết kế, giả định, hướng mở rộng
 ├── DESIGN.md                 # file này
-├── requirements.txt          # langchain-core/openai/text-splitters, langgraph, sqlite-vec,
+├── requirements.txt          # langchain-core/openai/text-splitters, langgraph, pgvector, psycopg,
 │                             # sentence-transformers, fastapi, uvicorn, numpy (pin version)
-├── .env.example              # LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, DB_PATH...
+├── .env.example              # LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, DB_URL...
 ├── data/docs/*.md            # corpus seed (được đăng ký vào bảng files như file thường)
 ├── data/uploads/             # file người dùng upload qua UI
 ├── logs/                    # logs ứng dụng
