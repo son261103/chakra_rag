@@ -26,8 +26,10 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    setup_logging()
+    # get_config() nạp .env vào os.environ — phải chạy TRƯỚC setup_logging()
+    # để LOG_LEVEL đặt trong .env có hiệu lực (setup_logging đọc trực tiếp env).
     cfg = get_config()
+    setup_logging()
     services = ServiceContainer(cfg)
     worker = IngestWorker(cfg, services.file_repo, services.chunk_repo, services.embedder)
     services.attach_worker(worker)
@@ -43,10 +45,7 @@ async def lifespan(app: FastAPI):
     app.state.service = services
     app.state.worker = worker
     logger.info(
-        "API up db=%s uploads=%s chunks=%d files=%d "
-        "(ready statuses only from previous successful ingest)",
-        cfg.db_url,
-        cfg.uploads_dir,
+        "API up chunks=%d files=%d",
         services.chunk_repo.count_chunks(),
         len(services.file_repo.list_files()),
     )
