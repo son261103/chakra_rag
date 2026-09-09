@@ -45,9 +45,18 @@ export default function Sidebar({
         </div>
 
         <div className="sidebar-actions">
-          <button className="new-chat-btn" onClick={onNewChat} type="button">
-            <Plus size={15} />
-            Chat mới
+          <button
+            className="new-chat-btn group"
+            onClick={onNewChat}
+            type="button"
+            title="Chat mới"
+            aria-label="Chat mới"
+          >
+            <Plus
+              size={16}
+              strokeWidth={2.5}
+              className="transition-transform duration-200 group-hover:rotate-90 group-hover:scale-115"
+            />
           </button>
           <button
             className="files-icon-btn"

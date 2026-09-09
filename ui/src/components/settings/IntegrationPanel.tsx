@@ -455,11 +455,15 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
             <button
               type="button"
               onClick={openCreateModal}
-              className="flex size-6 items-center justify-center rounded-md bg-accent text-accent-contrast hover:bg-accent-hover transition-all cursor-pointer shadow-xs active:scale-95"
+              className="group flex size-6 items-center justify-center rounded-md bg-accent text-accent-contrast transition-all cursor-pointer shadow-xs active:scale-95"
               title={`Thêm cấu hình ${defaults.label} mới`}
               aria-label={`Thêm cấu hình ${defaults.label} mới`}
             >
-              <Plus size={13} strokeWidth={2.5} />
+              <Plus
+                size={13}
+                strokeWidth={2.5}
+                className="transition-transform duration-200 group-hover:rotate-90 group-hover:scale-115"
+              />
             </button>
           </div>
         </div>
@@ -513,7 +517,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                     <button
                       type="button"
                       onClick={() => openViewModal(item)}
-                      className="rounded-lg p-1.5 text-muted transition hover:bg-bg-soft hover:text-text"
+                      className="rounded-lg p-1.5 text-muted transition hover:bg-bg-soft hover:text-text cursor-pointer"
                       title="Xem & chỉnh sửa chi tiết"
                       aria-label="Xem & chỉnh sửa chi tiết"
                     >
@@ -523,7 +527,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                       type="button"
                       onClick={() => handleDelete(item.id, item.name)}
                       disabled={isBusy}
-                      className="rounded-lg p-1.5 text-muted transition hover:bg-bg-soft hover:text-red disabled:opacity-50"
+                      className="rounded-lg p-1.5 text-muted transition hover:bg-bg-soft hover:text-red cursor-pointer disabled:opacity-50"
                       title="Xóa cấu hình"
                       aria-label="Xóa cấu hình"
                     >

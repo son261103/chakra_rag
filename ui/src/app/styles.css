@@ -88,9 +88,7 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.new-chat-btn:hover {
-  @apply bg-accent-hover;
-}
+
 
 .knowledge-actions {
   @apply flex shrink-0 flex-col gap-1.5;
@@ -236,14 +234,22 @@
 
 .theme-toggle,
 .settings-icon-btn {
-  @apply grid size-8 cursor-pointer place-items-center rounded-lg border border-border bg-bg-elevated text-[13px] text-muted transition;
+  @apply grid size-8 cursor-pointer place-items-center rounded-lg border border-border bg-bg-elevated text-[13px] text-muted transition-colors;
 }
 
-.theme-toggle:hover,
-.settings-icon-btn:hover {
-  @apply text-accent;
+.theme-toggle svg,
+.settings-icon-btn svg,
+.files-icon-btn svg {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.theme-toggle:hover svg {
+  transform: rotate(45deg) scale(1.15);
+}
+
+.settings-icon-btn:hover svg {
+  transform: rotate(90deg) scale(1.15);
+}
 .theme-toggle-icon {
   @apply leading-none;
 }
@@ -259,11 +265,11 @@
 }
 
 .files-icon-btn {
-  @apply inline-grid w-10 cursor-pointer place-items-center rounded-[10px] border border-border bg-bg-elevated text-[15px] text-text transition;
+  @apply inline-grid w-10 cursor-pointer place-items-center rounded-[10px] border border-border bg-bg-elevated text-[15px] text-text transition-colors;
 }
 
-.files-icon-btn:hover {
-  @apply border-accent/40 text-accent;
+.files-icon-btn:hover svg {
+  transform: translateY(-2px) scale(1.12);
 }
 
 /* ================= File drawer ================= */
