@@ -12,10 +12,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from service.container import ServiceContainer
+from api.deps import Services
 from service.embedding_integration_service import EmbeddingDimensionConflict
 
 logger = logging.getLogger(__name__)
@@ -80,25 +80,22 @@ class TestEmbeddingIntegrationRequest(BaseModel):
 
 
 @router.get("/embedding-integrations")
-def list_embedding_integrations(request: Request) -> dict[str, Any]:
+def list_embedding_integrations(service: Services) -> dict[str, Any]:
     """Danh sách cấu hình tích hợp embedding (API key đã được che an toàn)."""
-    service: ServiceContainer = request.app.state.service
     return {"integrations": service.embedding_integrations.list_integrations()}
 
 
 @router.get("/embedding-integrations/active")
-def get_active_embedding_integration(request: Request) -> dict[str, Any] | None:
+def get_active_embedding_integration(service: Services) -> dict[str, Any] | None:
     """Thông tin tích hợp embedding đang kích hoạt — null khi chưa cấu hình (không fallback env)."""
-    service: ServiceContainer = request.app.state.service
     return service.embedding_integrations.get_active_integration_info()
 
 
 @router.post("/embedding-integrations", response_model=EmbeddingIntegrationResponseModel)
 def create_embedding_integration(
-    req: CreateEmbeddingIntegrationRequest, request: Request
+    req: CreateEmbeddingIntegrationRequest, service: Services
 ) -> dict[str, Any]:
     """Tạo cấu hình tích hợp embedding mới, mã hóa API key bằng DEK/KEK."""
-    service: ServiceContainer = request.app.state.service
     try:
         created = service.embedding_integrations.create_integration(
             name=req.name,
@@ -129,10 +126,9 @@ def create_embedding_integration(
 def update_embedding_integration(
     integration_id: str,
     req: UpdateEmbeddingIntegrationRequest,
-    request: Request,
+    service: Services,
 ) -> dict[str, Any]:
     """Cập nhật cấu hình tích hợp embedding. Nếu api_key được truyền vào thì mã hóa lại."""
-    service: ServiceContainer = request.app.state.service
     try:
         updated = service.embedding_integrations.update_integration(
             integration_id=integration_id,
@@ -160,10 +156,9 @@ def update_embedding_integration(
 
 @router.delete("/embedding-integrations/{integration_id}")
 def delete_embedding_integration(
-    integration_id: str, request: Request, force: bool = False
+    integration_id: str, service: Services, force: bool = False
 ) -> dict[str, Any]:
     """Xóa một cấu hình tích hợp embedding."""
-    service: ServiceContainer = request.app.state.service
     try:
         deleted = service.embedding_integrations.delete_integration(
             integration_id, force=force
@@ -181,14 +176,13 @@ def delete_embedding_integration(
     response_model=EmbeddingIntegrationResponseModel,
 )
 def activate_embedding_integration(
-    integration_id: str, request: Request, force: bool = False
+    integration_id: str, service: Services, force: bool = False
 ) -> dict[str, Any]:
     """Kích hoạt một cấu hình tích hợp embedding làm mặc định.
 
     Nếu chiều khác index hiện tại và còn chunk → 409; gửi lại force=true sau khi
     user xác nhận để reset index (mọi file chuyển 'cần nạp lại').
     """
-    service: ServiceContainer = request.app.state.service
     try:
         activated = service.embedding_integrations.activate_integration(
             integration_id, force=force
@@ -208,10 +202,9 @@ def activate_embedding_integration(
 
 @router.post("/embedding-integrations/test")
 def test_embedding_integration(
-    req: TestEmbeddingIntegrationRequest, request: Request
+    req: TestEmbeddingIntegrationRequest, service: Services
 ) -> dict[str, Any]:
     """Kiểm tra kết nối tới embedding provider — embed thử 1 text, trả chiều thực tế."""
-    service: ServiceContainer = request.app.state.service
     try:
         return service.embedding_integrations.test_connection(
             model=req.model,

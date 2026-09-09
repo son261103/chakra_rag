@@ -183,9 +183,9 @@ class ChunkRepository:
     # ---------- số chiều cột vector ----------
 
     def vector_dimension(self) -> int | None:
-        """Chiều thực tế của cột `chunks.embedding` (pgvector lưu atttypmod = dim + 4).
+        """Chiều thực tế của cột `chunks.embedding` (pgvector lưu atttypmod = dim trực tiếp).
 
-        Trả None nếu bảng/chưa có dimension ràng buộc.
+        Trả None nếu bảng/chưa có dimension ràng buộc (typmod âm).
         """
         sql = (
             "SELECT atttypmod FROM pg_attribute "
@@ -196,7 +196,7 @@ class ChunkRepository:
             typmod = conn.scalar(sql_text(sql))
         if typmod is None or int(typmod) < 0:
             return None
-        return int(typmod) - 4
+        return int(typmod)
 
     def migrate_dimension(self, new_dim: int) -> None:
         """Đổi chiều cột embedding: hạ HNSW index → truncate chunks → ALTER TYPE → tạo lại index.

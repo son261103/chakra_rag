@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from service.container import ServiceContainer
+from api.deps import Services
 
 logger = logging.getLogger(__name__)
 
@@ -54,23 +54,20 @@ class TestIntegrationRequest(BaseModel):
 
 
 @router.get("/integrations")
-def list_integrations(request: Request) -> dict[str, Any]:
+def list_integrations(service: Services) -> dict[str, Any]:
     """Danh sách các cấu hình tích hợp LLM (API key đã được che an toàn)."""
-    service: ServiceContainer = request.app.state.service
     return {"integrations": service.integrations.list_integrations()}
 
 
 @router.get("/integrations/active")
-def get_active_integration(request: Request) -> dict[str, Any]:
+def get_active_integration(service: Services) -> dict[str, Any]:
     """Lấy thông tin tích hợp LLM đang được kích hoạt."""
-    service: ServiceContainer = request.app.state.service
     return service.integrations.get_active_integration_info()
 
 
 @router.post("/integrations", response_model=IntegrationResponseModel)
-def create_integration(req: CreateIntegrationRequest, request: Request) -> dict[str, Any]:
+def create_integration(req: CreateIntegrationRequest, service: Services) -> dict[str, Any]:
     """Tạo cấu hình tích hợp LLM mới, mã hóa API key bằng DEK/KEK."""
-    service: ServiceContainer = request.app.state.service
     created = service.integrations.create_integration(
         name=req.name,
         model=req.model,
@@ -87,10 +84,9 @@ def create_integration(req: CreateIntegrationRequest, request: Request) -> dict[
 def update_integration(
     integration_id: str,
     req: UpdateIntegrationRequest,
-    request: Request,
+    service: Services,
 ) -> dict[str, Any]:
     """Cập nhật cấu hình tích hợp LLM. Nếu api_key được truyền vào thì mã hóa lại."""
-    service: ServiceContainer = request.app.state.service
     updated = service.integrations.update_integration(
         integration_id=integration_id,
         name=req.name,
@@ -112,9 +108,8 @@ def update_integration(
 
 
 @router.delete("/integrations/{integration_id}")
-def delete_integration(integration_id: str, request: Request) -> dict[str, Any]:
+def delete_integration(integration_id: str, service: Services) -> dict[str, Any]:
     """Xóa một cấu hình tích hợp LLM."""
-    service: ServiceContainer = request.app.state.service
     if not service.integrations.delete_integration(integration_id):
         raise HTTPException(404, "Không tìm thấy cấu hình tích hợp")
     logger.info("Xóa tích hợp LLM id=%s", integration_id)
@@ -122,9 +117,8 @@ def delete_integration(integration_id: str, request: Request) -> dict[str, Any]:
 
 
 @router.post("/integrations/{integration_id}/activate", response_model=IntegrationResponseModel)
-def activate_integration(integration_id: str, request: Request) -> dict[str, Any]:
+def activate_integration(integration_id: str, service: Services) -> dict[str, Any]:
     """Kích hoạt một cấu hình tích hợp LLM làm mặc định."""
-    service: ServiceContainer = request.app.state.service
     activated = service.integrations.activate_integration(integration_id)
     if not activated:
         raise HTTPException(404, "Không tìm thấy cấu hình tích hợp")
@@ -133,9 +127,8 @@ def activate_integration(integration_id: str, request: Request) -> dict[str, Any
 
 
 @router.post("/integrations/test")
-def test_integration(req: TestIntegrationRequest, request: Request) -> dict[str, Any]:
+def test_integration(req: TestIntegrationRequest, service: Services) -> dict[str, Any]:
     """Kiểm tra kết nối tới LLM provider với model và API key được chỉ định."""
-    service: ServiceContainer = request.app.state.service
     try:
         return service.integrations.test_connection(
             model=req.model,

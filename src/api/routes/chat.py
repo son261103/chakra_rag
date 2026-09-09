@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from service.container import ServiceContainer
+from api.deps import Services
 
 router = APIRouter(tags=["chat"])
 
@@ -42,8 +42,7 @@ class AskResponseModel(BaseModel):
 
 
 @router.post("/ask", response_model=AskResponseModel)
-def ask(req: AskRequest, request: Request) -> AskResponseModel:
-    service: ServiceContainer = request.app.state.service
+def ask(req: AskRequest, service: Services) -> AskResponseModel:
     if req.conversation_id and service.conversations.get_conversation(req.conversation_id) is None:
         raise HTTPException(404, "Không tìm thấy hội thoại")
     return service.chat.ask(
@@ -54,13 +53,12 @@ def ask(req: AskRequest, request: Request) -> AskResponseModel:
 
 
 @router.post("/ask/stream")
-def ask_stream(req: AskRequest, request: Request):
+def ask_stream(req: AskRequest, service: Services):
     """SSE: mỗi event là 1 dòng `data: {json}`.
 
     Events: thinking (delta), tool_call (kết quả 1 lượt search), answer (delta),
     done (payload chuẩn đã verify), error.
     """
-    service: ServiceContainer = request.app.state.service
     if req.conversation_id and service.conversations.get_conversation(req.conversation_id) is None:
         raise HTTPException(404, "Không tìm thấy hội thoại")
 
@@ -80,8 +78,7 @@ def ask_stream(req: AskRequest, request: Request):
 
 
 @router.get("/chunks/{chunk_id}")
-def get_chunk(chunk_id: str, request: Request) -> dict[str, Any]:
-    service: ServiceContainer = request.app.state.service
+def get_chunk(chunk_id: str, service: Services) -> dict[str, Any]:
     chunk = service.chat.get_chunk(chunk_id)
     if chunk is None:
         raise HTTPException(404, "Không tìm thấy chunk")

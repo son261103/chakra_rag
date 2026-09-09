@@ -7,11 +7,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 import api as api_mod
+from api.deps import get_service
 
 
 @pytest.fixture()
-def client(tmp_path):
-    """App instance với lifespan mocked: no real store/embedder/worker threads."""
+def client():
+    """App thật với service giả: override dependency, không chạy lifespan
+    (không đụng DB thật, không khởi động worker thread)."""
     app = api_mod.app
     service = MagicMock(name="service")
     worker = MagicMock(name="worker")
@@ -23,35 +25,15 @@ def client(tmp_path):
         "name": "notes.md",
         "status": "queued",
     }
-    # bypass lifespan init entirely; restore original after tests:
-    original_lifespan = app.router.lifespan_context
-    app.router.lifespan_context = _StaticLifespan(app, service=service, worker=worker)
+    app.dependency_overrides[get_service] = lambda: service
     try:
-        with TestClient(app) as c:
-            c.service = service  # type: ignore[attr-defined]
-            c.worker = worker  # type: ignore[attr-defined]
-            yield c
+        # Không vào context manager → lifespan không chạy; service đã được inject qua override.
+        c = TestClient(app)
+        c.service = service  # type: ignore[attr-defined]
+        c.worker = worker  # type: ignore[attr-defined]
+        yield c
     finally:
-        app.router.lifespan_context = original_lifespan
-
-
-class _StaticLifespan:
-    def __init__(self, app, service, worker):
-        self.app = app
-        self.service = service
-        self.worker = worker
-
-    def __call__(self, app):
-        # Starlette gọi lifespan_context(app) — trả về chính instance (async CM)
-        return self
-
-    async def __aenter__(self):
-        self.app.state.service = self.service
-        self.app.state.worker = self.worker
-        return None
-
-    async def __aexit__(self, *exc):
-        return False
+        app.dependency_overrides.clear()
 
 
 def test_health(client):

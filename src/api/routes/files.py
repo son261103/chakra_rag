@@ -10,7 +10,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
-from service.container import ServiceContainer
+from api.deps import Services
+from config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +19,8 @@ router = APIRouter(tags=["files"])
 
 
 @router.post("/files")
-async def upload_file(file: UploadFile, request: Request) -> dict[str, Any]:
+async def upload_file(file: UploadFile, service: Services) -> dict[str, Any]:
     """Lưu file upload và đưa vào hàng đợi ingest."""
-    from config import get_config
-
-    service: ServiceContainer = request.app.state.service
     suffix = (file.filename or "").rsplit(".", 1)[-1]
     supported = get_config().supported_suffixes
     if f".{suffix}".lower() not in supported:
@@ -35,9 +33,8 @@ async def upload_file(file: UploadFile, request: Request) -> dict[str, Any]:
 
 
 @router.get("/files/{file_id}/chunks")
-def list_file_chunks(file_id: str, request: Request) -> dict[str, Any]:
+def list_file_chunks(file_id: str, service: Services) -> dict[str, Any]:
     """Xem dữ liệu đã ingest (chunks) + full text gốc trên đĩa — UI inspector."""
-    service: ServiceContainer = request.app.state.service
     result = service.files.inspect_file(file_id)
     if result is None:
         raise HTTPException(404, "Không tìm thấy file")
@@ -45,9 +42,8 @@ def list_file_chunks(file_id: str, request: Request) -> dict[str, Any]:
 
 
 @router.post("/files/{file_id}/reingest")
-def reingest_file(file_id: str, request: Request) -> dict[str, Any]:
+def reingest_file(file_id: str, service: Services) -> dict[str, Any]:
     """Nhúng lại (parse → chunk → embed) một file đã có trên đĩa."""
-    service: ServiceContainer = request.app.state.service
     try:
         return service.files.reingest_file(file_id)
     except (FileNotFoundError, ValueError) as exc:
@@ -55,9 +51,8 @@ def reingest_file(file_id: str, request: Request) -> dict[str, Any]:
 
 
 @router.delete("/files/{file_id}")
-def delete_file(file_id: str, request: Request) -> dict[str, Any]:
+def delete_file(file_id: str, service: Services) -> dict[str, Any]:
     """Xóa file khỏi index (+ file trên đĩa nếu nằm trong uploads)."""
-    service: ServiceContainer = request.app.state.service
     try:
         return service.files.delete_file(file_id, remove_disk=True)
     except ValueError as exc:
@@ -65,14 +60,13 @@ def delete_file(file_id: str, request: Request) -> dict[str, Any]:
 
 
 @router.post("/ingest/reingest")
-def reingest_all(request: Request) -> dict[str, Any]:
+def reingest_all(service: Services) -> dict[str, Any]:
     """Nhúng lại toàn bộ file còn trên đĩa (nút “Nhúng lại RAG” trên UI)."""
-    service: ServiceContainer = request.app.state.service
     return service.files.reingest_all()
 
 
 @router.get("/ingest/events")
-async def ingest_events(request: Request) -> StreamingResponse:
+async def ingest_events(request: Request, service: Services) -> StreamingResponse:
     """SSE thay cho polling: đẩy snapshot {files, progress} mỗi khi ingest đổi trạng thái.
 
     Worker notify qua IngestEventBus sau mỗi lần ghi (queued/parsing/embedding
@@ -80,8 +74,6 @@ async def ingest_events(request: Request) -> StreamingResponse:
     Giữa 2 lần đổi trạng thái gửi keepalive comment mỗi 15s để proxy không đóng
     kết nối. Snapshot đọc DB là hàm sync nên chạy qua to_thread khỏi chặn event loop.
     """
-    service: ServiceContainer = request.app.state.service
-
     async def stream():
         version = await asyncio.to_thread(service.files.ingest_version)
         snapshot = await asyncio.to_thread(service.files.ingest_snapshot)

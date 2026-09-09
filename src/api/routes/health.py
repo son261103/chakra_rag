@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel
+
+from api.deps import Services
 
 router = APIRouter(tags=["health"])
 
@@ -14,6 +16,5 @@ class HealthResponse(BaseModel):
 
 
 @router.get("/health", response_model=HealthResponse)
-def health(request: Request) -> HealthResponse:
-    service = request.app.state.service
+def health(service: Services) -> HealthResponse:
     return {"status": "ok", "chunks": service.chunk_repo.count_chunks()}
