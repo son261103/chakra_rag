@@ -169,3 +169,89 @@ def test_test_integration_endpoint(client):
     assert r.status_code == 200
     assert r.json()["ok"] is True
     assert r.json()["latency_ms"] == 120
+
+
+# ---------- embedding integrations ----------
+
+_EMBED_ROW = {
+    "id": "e1",
+    "name": "Mistral",
+    "provider": "openai",
+    "base_url": "https://api.mistral.ai/v1",
+    "model": "mistral-embed",
+    "dimension": 1024,
+    "masked_api_key": "abc...xyz",
+    "has_api_key": True,
+    "is_active": True,
+    "created_at": "2026-09-09T00:00:00",
+    "updated_at": "2026-09-09T00:00:00",
+}
+
+
+def test_list_embedding_integrations(client):
+    client.service.embedding_integrations.list_integrations.return_value = [_EMBED_ROW]
+    r = client.get("/embedding-integrations")
+    assert r.status_code == 200
+    items = r.json()["integrations"]
+    assert items[0]["id"] == "e1"
+    assert items[0]["dimension"] == 1024
+
+
+def test_create_embedding_integration(client):
+    client.service.embedding_integrations.create_integration.return_value = _EMBED_ROW
+    r = client.post(
+        "/embedding-integrations",
+        json={
+            "name": "Mistral",
+            "base_url": "https://api.mistral.ai/v1",
+            "model": "mistral-embed",
+            "dimension": 1024,
+            "api_key": "k",
+            "is_active": True,
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["dimension"] == 1024
+    client.service.embedding_integrations.create_integration.assert_called_once()
+
+
+def test_activate_embedding_dimension_conflict_409_then_force(client):
+    from service.embedding_integration_service import EmbeddingDimensionConflict
+
+    client.service.embedding_integrations.activate_integration.side_effect = (
+        EmbeddingDimensionConflict(384, 1024)
+    )
+    r = client.post("/embedding-integrations/e1/activate")
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["error"] == "dimension_mismatch"
+    assert detail["current_dimension"] == 384
+    assert detail["new_dimension"] == 1024
+
+    # UI xác nhận xong → gửi lại force=true
+    client.service.embedding_integrations.activate_integration.side_effect = None
+    client.service.embedding_integrations.activate_integration.return_value = _EMBED_ROW
+    r2 = client.post("/embedding-integrations/e1/activate?force=true")
+    assert r2.status_code == 200
+    client.service.embedding_integrations.activate_integration.assert_called_with(
+        "e1", force=True
+    )
+
+
+def test_test_embedding_endpoint(client):
+    client.service.embedding_integrations.test_connection.return_value = {
+        "ok": True,
+        "model": "mistral-embed",
+        "dimension": 1024,
+        "latency_ms": 50,
+    }
+    r = client.post(
+        "/embedding-integrations/test",
+        json={
+            "model": "mistral-embed",
+            "base_url": "https://api.mistral.ai/v1",
+            "dimension": 1024,
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["dimension"] == 1024

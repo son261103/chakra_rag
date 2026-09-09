@@ -1,4 +1,4 @@
-"""Smoke tests: chạy không cần LLM, chỉ cần embedding model (tải 1 lần).
+"""Smoke tests: chạy không cần LLM, không cần mạng (embedding là fake deterministic).
 
 Test các tầng tự viết: chunking, lưu trữ (PostgreSQL pgvector + FTS qua repository), retrieve (RRF),
 verify (citation check), ingest. Đây là phần nghiệp vụ chấm điểm nên phải có test.
@@ -6,10 +6,12 @@ verify (citation check), ingest. Đây là phần nghiệp vụ chấm điểm n
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +27,6 @@ from agent.agent import (  # noqa: E402
 from agent.tools import ToolDeps, build_tools  # noqa: E402
 from config import get_config  # noqa: E402
 from core.chunking import chunk_markdown  # noqa: E402
-from core.embedding import Embedder  # noqa: E402
 from core.retrieval import RetrievalResult, Retriever, reciprocal_rank_fusion  # noqa: E402
 from core.verification import (  # noqa: E402
     extract_citations,
@@ -35,8 +36,6 @@ from core.verification import (  # noqa: E402
 from ingestion.worker import _assign_chunk_ids  # noqa: E402
 from repositories import ChunkRepository, FileRepository  # noqa: E402
 from storage.connection import Database  # noqa: E402
-
-EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 SAMPLE_MD = (
     "# Chính sách nghỉ phép\n"
@@ -53,9 +52,37 @@ SAMPLE_MD = (
 )
 
 
+class DeterministicEmbedder:
+    """Embedder giả deterministic: vector rng seed theo sha256(text), chuẩn hóa L2.
+
+    Embedding model local đã được thay bằng API integration (cấu hình qua Settings) —
+    test chỉ cần đúng pipeline (insert/search/RRF/confidence), không cần ngữ nghĩa thật.
+    Text giống nhau → vector giống nhau (cosine = 1).
+    """
+
+    dim = 64
+
+    def _vec(self, text: str) -> np.ndarray:
+        seed = int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "big")
+        rng = np.random.default_rng(seed)
+        v = rng.standard_normal(self.dim).astype(np.float32)
+        return v / np.linalg.norm(v)
+
+    def embed(self, texts: list[str]) -> np.ndarray:
+        if not texts:
+            return np.zeros((0, self.dim), dtype=np.float32)
+        return np.stack([self._vec(t) for t in texts])
+
+    def embed_one(self, text: str) -> np.ndarray:
+        return self._vec(text)
+
+    def invalidate(self) -> None:
+        pass
+
+
 @pytest.fixture(scope="module")
-def embedder() -> Embedder:
-    return Embedder(EMBED_MODEL)
+def embedder() -> DeterministicEmbedder:
+    return DeterministicEmbedder()
 
 
 @pytest.fixture
@@ -97,18 +124,20 @@ def test_chunk_ids_are_stable_and_unique():
 
 def test_store_roundtrip_and_search(chunks, embedder):
     parts = chunk_markdown(SAMPLE_MD, "test.md")
-    vectors = embedder.embed([c.text for c in parts])
-    for (cid, chunk), vec in zip(_assign_chunk_ids(parts), vectors, strict=False):
+    numbered = _assign_chunk_ids(parts)
+    vectors = embedder.embed([c.text for _, c in numbered])
+    for (cid, chunk), vec in zip(numbered, vectors, strict=False):
         chunks.insert_chunk(cid, chunk.doc, chunk.section, chunk.text,
                            chunk.char_start, chunk.char_end, vec)
 
     assert chunks.count_chunks() == len(parts)
 
-    # vector search
-    hits = chunks.vector_search(embedder.embed_one("nghỉ phép bao nhiêu ngày"), top_k=3)
+    # vector search — query đúng bằng text chunk đầu → cosine = 1, xếp đầu
+    hits = chunks.vector_search(embedder.embed_one(numbered[0][1].text), top_k=3)
     assert hits
     assert 0.0 <= hits[0]["score"] <= 1.0
-    assert hits[0]["chunk_id"]
+    assert hits[0]["chunk_id"] == numbered[0][0]
+    assert hits[0]["score"] == pytest.approx(1.0, abs=1e-4)
 
     # fts search — exact term
     fts_hits = chunks.fts_search("12 ngày phép", top_k=3)
@@ -150,16 +179,19 @@ def test_rrf_fusion_ranks_consensus_first():
 
 def test_retriever_returns_result_with_confidence(chunks, embedder):
     parts = chunk_markdown(SAMPLE_MD, "test.md")
-    vectors = embedder.embed([c.text for c in parts])
-    for (cid, chunk), vec in zip(_assign_chunk_ids(parts), vectors, strict=False):
+    numbered = _assign_chunk_ids(parts)
+    vectors = embedder.embed([c.text for _, c in numbered])
+    for (cid, chunk), vec in zip(numbered, vectors, strict=False):
         chunks.insert_chunk(cid, chunk.doc, chunk.section, chunk.text,
                            chunk.char_start, chunk.char_end, vec)
 
     retriever = Retriever(chunks, embedder, top_k=3, min_score=0.25)
-    result = retriever.search("nhân viên được nghỉ bao nhiêu ngày phép mỗi năm")
+    # Query đúng bằng text một chunk → cosine 1.0 (fake embedder deterministic)
+    result = retriever.search(numbered[0][1].text)
     assert result.chunks
     assert result.max_score > 0.25
     assert not result.low_confidence
+    assert result.chunks[0]["chunk_id"] == numbered[0][0]
     assert all("chunk_id" in c and "text" in c for c in result.chunks)
 
 

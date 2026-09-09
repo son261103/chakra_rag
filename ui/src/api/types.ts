@@ -168,3 +168,66 @@ export interface TestIntegrationResult {
   response: string;
   latency_ms: number;
 }
+
+/** Cấu hình tích hợp Embedding (API + số chiều vector). */
+export interface EmbeddingIntegrationEntry {
+  id: string;
+  name: string;
+  provider: string;
+  base_url: string;
+  model: string;
+  dimension: number;
+  masked_api_key: string;
+  has_api_key: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateEmbeddingIntegrationPayload {
+  name: string;
+  provider?: string;
+  base_url: string;
+  model: string;
+  dimension: number;
+  api_key: string;
+  is_active?: boolean;
+  /** true = đã xác nhận đổi chiều vector (reset index) sau khi nhận 409. */
+  force?: boolean;
+}
+
+export interface UpdateEmbeddingIntegrationPayload {
+  name?: string;
+  provider?: string;
+  base_url?: string;
+  model?: string;
+  dimension?: number;
+  api_key?: string;
+  is_active?: boolean;
+  force?: boolean;
+}
+
+export interface TestEmbeddingIntegrationPayload {
+  model: string;
+  base_url: string;
+  dimension?: number;
+  api_key?: string;
+  integration_id?: string;
+}
+
+export interface TestEmbeddingIntegrationResult {
+  ok: boolean;
+  model: string;
+  /** Chiều vector thực tế model trả về — dùng để phát hiện khai sai dimension. */
+  dimension: number;
+  latency_ms: number;
+  dimension_mismatch?: boolean;
+}
+
+/** Detail của response 409 khi đổi chiều embedding cần xác nhận. */
+export interface DimensionMismatchDetail {
+  error: "dimension_mismatch";
+  current_dimension: number;
+  new_dimension: number;
+  message: string;
+}

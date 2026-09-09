@@ -20,10 +20,10 @@ file upload qua UI (.md/.txt/.pdf, corpus nhỏ tiếng Việt tự soạn)
         ▼
  ┌─────────────┐   ┌──────────────┐   ┌────────────────────────┐
 │  Chunking   │──▶│  Embedding   │──▶│  PostgreSQL            │
-│ (section +  │   │ (multilingual│   │  - chunks: text+meta   │
-│  paragraph, │   │  MiniLM 384d)│   │  - embedding: pgvector │
-│  ~300 tok,  │   └──────────────┘   │  - tsv: tsvector (FTS) │
-│  overlap 50)│                      └────────────────────────┘
+│ (section +  │   │ (API, model  │   │  - chunks: text+meta   │
+│  paragraph, │   │  + chiều cấu │   │  - embedding: pgvector │
+│  ~300 tok,  │   │  hình qua UI)│   │  - tsv: tsvector (FTS) │
+│  overlap 50)│   └──────────────┘   └────────────────────────┘
  └─────────────┘                                │
                                                 ▼
  question ─────────────────────────────────────────────────────┐
@@ -93,10 +93,13 @@ Lối vào: **FastAPI** (`POST /ask`) theo chuẩn RESTful API. Phía trên là 
   ```
 - Trích dẫn trong câu trả lời luôn tra ngược về `(doc, section, span gốc)` — không chỉ ID.
 
-### 3.3 Embedding: model đa ngôn ngữ chạy local
-- Mặc định: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384 chiều) — chạy offline, không cần API key, người chấm chạy được ngay; hỗ trợ tiếng Việt tốt ở quy mô này.
-- Chuẩn hóa L2 vector trước khi lưu ⇒ khoảng cách L2 tương đương cosine (<-> trong pgvector).
-- Cấu hình được qua env (đổi sang OpenAI embedding nếu muốn) nhưng default không cần key.
+### 3.3 Embedding: model qua API, cấu hình như tích hợp LLM
+- Embedding KHÔNG chạy local trong RAM nữa. Mỗi provider là một row trong bảng `embedding_integrations` (base URL + model + API key mã hóa DEK/KEK + **số chiều vector**), quản lý qua Settings UI tab "Embedding" — cùng pattern với tích hợp LLM.
+- Client gọi endpoint `/embeddings` chuẩn OpenAI-compatible (dùng được Mistral, OpenAI, Jina, Ollama `/v1`…) — base URL do user tự điền trong form.
+- Số chiều do user khai báo (nhiều provider không trả metadata chiều) → dùng để tạo DDL `vector({dim})` và validate kết quả API lúc embed (lệch là raise sớm).
+- Chuẩn hóa L2 vector thủ công bằng numpy trước khi lưu ⇒ khoảng cách L2 tương đương cosine (<-> trong pgvector), công thức score `1 - d/2` và index HNSW `vector_l2_ops` giữ nguyên.
+- Resolve integration active mỗi lần nhúng (cache client theo fingerprint) → đổi model không cần restart. **Không có credential/fallback env cho embedding**: DB chưa có integration active → gọi embedding raise `EmbeddingConfigError` với thông báo rõ, user phải thêm trong Settings. Duy nhất env `EMBED_DIM` = chiều vector mặc định của DB: DB mới chưa có integration nào dùng nó dựng bảng `chunks` rỗng lúc khởi tạo (đổi chiều mặc định → sửa `.env`).
+- **Đổi chiều vector**: index cũ vô nghĩa → khi activate/update config có chiều khác chiều cột `chunks.embedding` và index còn chunk, backend trả 409; UI xác nhận rồi gửi `force=true` → truncate + ALTER TYPE + dựng lại HNSW + đánh dấu mọi file "cần nạp lại" (user tự bấm ↻ từng file, không auto-reingest).
 
 ### 3.4 Vector store: PostgreSQL + pgvector
 Vì sao hợp với bài này:
@@ -111,7 +114,7 @@ Vì sao hợp với bài này:
       text TEXT NOT NULL,
       char_start INTEGER NOT NULL,
       char_end INTEGER NOT NULL,
-      embedding vector(384) NOT NULL,
+      embedding vector({dim}) NOT NULL,  -- dim = chiều của embedding integration active
       tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', text)) STORED
   );
   ```
@@ -282,9 +285,9 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 - Nếu bị hỏi "sao không viết vòng lặp 20 dòng thuần SDK?" — câu trả lời: chọn LangGraph vì mở rộng sau này (thêm tool, checkpoint, human-in-the-loop) không phải viết lại; với 1 tool thì cả hai cách đều đúng, nhưng framework cho interface message chuẩn để trích `search_trace` và bằng chứng citation.
 
 **Stack cuối cùng:**
-- `langchain-core`, `langchain-openai`, `langchain-text-splitters`, `langgraph` — agent + chunking + LLM.
+- `langchain-core`, `langchain-openai`, `langchain-text-splitters`, `langgraph` — agent + chunking + LLM + embedding client (`OpenAIEmbeddings`).
+- `openai` — SDK cho endpoint embedding OpenAI-compatible.
 - `pgvector`, `psycopg` — vector store và PostgreSQL driver.
-- `sentence-transformers` — embedding local, không cần key.
 - `fastapi` + `uvicorn` — API.
 - `pypdf` (tùy chọn) — nhận thêm PDF; mặc định chỉ `.md/.txt`.
 
@@ -303,7 +306,7 @@ chakra_rag/
 ├── README.md                 # cách chạy, quyết định thiết kế, giả định, hướng mở rộng
 ├── DESIGN.md                 # file này
 ├── requirements.txt          # langchain-core/openai/text-splitters, langgraph, pgvector, psycopg,
-│                             # sentence-transformers, fastapi, uvicorn, numpy (pin version)
+│                             # openai, fastapi, uvicorn, numpy (pin version)
 ├── .env.example              # LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, DB_URL...
 ├── data/uploads/             # file người dùng upload qua UI
 ├── logs/                    # logs ứng dụng

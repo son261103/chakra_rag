@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from storage.schemas.chunks import CHUNKS_SCHEMA
 from storage.schemas.conversations import CONVERSATIONS_SCHEMA
+from storage.schemas.embedding_integrations import EMBEDDING_INTEGRATIONS_SCHEMA
 from storage.schemas.files import FILES_SCHEMA
 from storage.schemas.integrations import INTEGRATIONS_SCHEMA
 from storage.schemas.messages import MESSAGES_SCHEMA
@@ -15,6 +16,17 @@ TABLE_SCHEMAS: list[str] = [
     CONVERSATIONS_SCHEMA,
     MESSAGES_SCHEMA,
     INTEGRATIONS_SCHEMA,
+    EMBEDDING_INTEGRATIONS_SCHEMA,
+]
+
+# Phần schema không chứa `{dim}` — chạy trước khi biết số chiều embedding
+# (Database tự resolve dimension từ embedding_integrations đang active).
+NONCHUNKS_SCHEMAS: list[str] = [
+    FILES_SCHEMA,
+    CONVERSATIONS_SCHEMA,
+    MESSAGES_SCHEMA,
+    INTEGRATIONS_SCHEMA,
+    EMBEDDING_INTEGRATIONS_SCHEMA,
 ]
 
 __all__ = [
@@ -23,5 +35,7 @@ __all__ = [
     "CONVERSATIONS_SCHEMA",
     "MESSAGES_SCHEMA",
     "INTEGRATIONS_SCHEMA",
+    "EMBEDDING_INTEGRATIONS_SCHEMA",
     "TABLE_SCHEMAS",
+    "NONCHUNKS_SCHEMAS",
 ]

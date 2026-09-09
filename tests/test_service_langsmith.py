@@ -9,14 +9,17 @@ import pytest
 class _FakeEmbedder:
     dim = 4
 
-    def __init__(self, model: str):
+    def __init__(self, cfg, integration_repo=None):
         pass
 
     def embed_one(self, text: str) -> list[float]:
         return [0.0] * 4
 
-    def embed_many(self, texts):
+    def embed(self, texts):
         return [[0.0] * 4 for _ in texts]
+
+    def invalidate(self) -> None:
+        pass
 
 
 @pytest.fixture()

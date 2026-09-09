@@ -43,9 +43,6 @@ def setup_logging(level: str | None = None) -> None:
         "openai",
         "urllib3",
         "multipart",
-        "sentence_transformers",
-        "transformers",
-        "torch",
         "filelock",
         "asyncio",
     ):

@@ -109,3 +109,12 @@ class FileRepository:
                 )
             )
         return result.rowcount
+
+    def mark_all_stale(self, error: str) -> int:
+        """Đánh dấu TOÀN BỘ file failed kèm thông báo (dùng khi đổi chiều vector —
+        index cũ đã reset, mọi file cần bấm ↻ nạp lại; không tự reingest)."""
+        with self.db.engine.begin() as conn:
+            result = conn.execute(
+                update(self.files).values(status="failed", error=error)
+            )
+        return result.rowcount

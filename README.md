@@ -5,7 +5,7 @@
 | Yêu cầu đề | Cách đáp ứng trong repo |
 |---|---|
 | Chia nhỏ tài liệu | Heading + paragraph chunking (~300 token, overlap 50), giữ metadata nguồn |
-| Tạo embeddings | `paraphrase-multilingual-MiniLM-L12-v2` (local, 384d, L2-normalize) |
+| Tạo embeddings | Embedding model qua **API** (OpenAI-compatible `/embeddings`), cấu hình trên UI; L2-normalize |
 | Truy xuất | Hybrid: vector (`pgvector`) + lexical (PostgreSQL FTS) → Reciprocal Rank Fusion |
 | Trả lời + trích dẫn | Agent gọi tool `search_docs` → `read_chunk` (LangGraph); mỗi claim kèm `[chunk_id]` |
 | Hạn chế hallucination | Retrieval gate + prompt ràng buộc + citation verifier độc lập LLM |
@@ -15,9 +15,10 @@
 
 ## 2. Yêu cầu môi trường
 
-- **Python 3.11+** (khuyến nghị **3.12**; tránh 3.14 — torch/sentence-transformers có thể lỗi)
+- **Python 3.11+** (khuyến nghị **3.12**)
 - **uv** (khuyến nghị) hoặc `pip` + `venv`
 - Một **LLM API key** OpenAI-compatible (OpenAI / OpenRouter / Ollama local…)
+- Một **Embedding API key** (Mistral / OpenAI / bất kỳ endpoint `/embeddings` nào)
 - Model **hỗ trợ function calling** (vd. `gpt-4o-mini`, Qwen tool-call) — agent gọi tool `search_docs` để tra cứu
 - *(Tuỳ chọn UI)* Node.js 18+
 
@@ -42,14 +43,16 @@ cd ui && npm install && npm run dev
 ```
 
 > **Cấu hình Model & API Key:**
-> Model và API Key được cấu hình trực tiếp trên Web UI thông qua nút **Cài đặt LLM** ở Sidebar.
-> API Key được mã hóa an toàn bằng cơ chế **Envelope Encryption (KEK / DEK)** trước khi lưu vào Database, không cần lưu thô trong `.env`.
+> Model LLM và Embedding được cấu hình trực tiếp trên Web UI thông qua nút **Cài đặt Model & API Key** ở Sidebar (2 tab: LLM / Embedding).
+> API Key của cả hai loại được mã hóa an toàn bằng cơ chế **Envelope Encryption (KEK / DEK)** trước khi lưu vào Database, không lưu thô trong `.env`.
+> Riêng Embedding cần khai báo thêm **Chiều vector (dimension)** khớp với model (vd. `mistral-embed` = 1024). **Không có credential embedding trong `.env`** — muốn dùng embedding thì phải thêm integration trong tab Embedding.
 ### Cấu hình `.env` (rút gọn)
 ```env
 # Khóa chủ KEK để mã hóa DEK của từng tích hợp (Model & API Key cấu hình trên UI)
 ENCRYPTION_KEY=zkniEH7RPIWhK3rtbR96-iqV30JHsnBZ_qnP2xofJcU=
 
-EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+# Chiều vector MẶC ĐỊNH của DB (bảng chunks rỗng lúc tạo DB mới; đổi trong .env)
+EMBED_DIM=1024
 DB_USER=admin
 DB_PASSWORD=your_password
 DB_NAME=spdb
@@ -60,7 +63,7 @@ TOP_K=5
 MAX_AGENT_TURNS=4
 ```
 
-Lần đầu chạy embedding model sẽ **tải về máy** (cần mạng). Database sử dụng PostgreSQL với extension `vector` (pgvector).
+Database sử dụng PostgreSQL với extension `vector` (pgvector).
 ---
 
 ## 4. Kiểm tra chất lượng
@@ -107,7 +110,7 @@ Mỗi câu trả lời in kèm **Nguồn** dạng `[chunk_id] doc — section`. 
 
 **Giới hạn trung thực:** support check n-gram là proxy rẻ, không phải NLI — diễn đạt lại bằng từ khác có thể bị flag oan. Nâng cấp tự nhiên: NLI hoặc LLM-judge từng claim.
 
-**Hiệu chỉnh `MIN_SCORE=0.25`:** với MiniLM multilingual, cosine thường nén thang điểm (~0.3 ≈ nhiễu, ~0.5–0.6 ≈ liên quan, ≥0.7 ≈ gần exact). 0.25 nằm vừa trên noise floor.
+**Hiệu chỉnh `MIN_SCORE=0.25`:** ngưỡng này áp cho vector đã L2-normalize (cosine ∈ [0,1]). Mỗi embedding model có thang điểm khác nhau — nếu đổi model mà thấy quá nhiều `low_confidence` (hoặc quá ít), chỉnh lại qua env `MIN_SCORE`.
 
 ---
 
@@ -116,7 +119,7 @@ Mỗi câu trả lời in kèm **Nguồn** dạng `[chunk_id] doc — section`. 
 ```
 file upload (.md/.txt/.pdf)
     → chunk (heading + paragraph)
-    → embed (MiniLM local)
+    → embed (API — integration trong Settings)
     → PostgreSQL: files + chunks (pgvector + tsvector)
 
 câu hỏi
@@ -174,7 +177,7 @@ cd ui && npm install && npm run dev
 - Upload `.md` / `.txt` từ sidebar → worker nền chunk + embed → chấm xanh khi ready  
 - Chat streaming (SSE): thinking / tool calls / answer + citation chip mở đoạn gốc  
 - Index chỉ gồm file user upload qua Web UI — không auto-seed gì cả
-- Đổi `.env` cần **restart** backend (`--reload` chỉ theo dõi file `.py`)
+- Đổi tích hợp LLM/Embedding trên UI có hiệu lực ngay (không cần restart); đổi `.env` thì cần restart backend
 
 ---
 
@@ -184,7 +187,7 @@ cd ui && npm install && npm run dev
 - LLM qua endpoint OpenAI-compatible; người chấm cần 1 key hoặc Ollama.
 - Đầu vào chính cho take-home: `.md` / `.txt` sạch (không OCR PDF scan / bảng phức tạp trong phạm vi 48h).
 - Cần model hỗ trợ function calling (agent gọi tool `search_docs`).
-- Embedding chạy local CPU; lần đầu tải model chậm hơn.
+- Embedding chạy qua API (không load model vào RAM); cần mạng + API key mỗi lần ingest/search.
 
 ---
 

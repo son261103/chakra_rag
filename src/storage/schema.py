@@ -8,9 +8,12 @@ DDL từ các module schema riêng lẻ trong package `storage/schemas/`.
 - `conversations`   : danh sách hội thoại.
 - `messages`        : lịch sử tin nhắn (payload JSON cho UI replay).
 - `llm_integrations`: cấu hình LLM provider (API key mã hóa).
+- `embedding_integrations`: cấu hình embedding provider (API key mã hóa + số chiều).
 
 `SCHEMA` chứa placeholder `{dim}` cho số chiều embedding của vector — `Database`
-(connection.py) format trước khi execute lúc khởi tạo.
+(connection.py) format trước khi execute lúc khởi tạo. `SCHEMA_NO_CHUNKS` là phần
+không phụ thuộc `{dim}` — chạy trước khi resolve dimension từ bảng
+`embedding_integrations`.
 """
 
 from __future__ import annotations
@@ -18,20 +21,26 @@ from __future__ import annotations
 from storage.schemas import (
     CHUNKS_SCHEMA,
     CONVERSATIONS_SCHEMA,
+    EMBEDDING_INTEGRATIONS_SCHEMA,
     FILES_SCHEMA,
     INTEGRATIONS_SCHEMA,
     MESSAGES_SCHEMA,
+    NONCHUNKS_SCHEMAS,
     TABLE_SCHEMAS,
 )
 
 SCHEMA = "\n\n".join(TABLE_SCHEMAS).strip() + "\n"
+SCHEMA_NO_CHUNKS = "\n\n".join(NONCHUNKS_SCHEMAS).strip() + "\n"
 
 __all__ = [
     "SCHEMA",
+    "SCHEMA_NO_CHUNKS",
     "CHUNKS_SCHEMA",
     "FILES_SCHEMA",
     "CONVERSATIONS_SCHEMA",
     "MESSAGES_SCHEMA",
     "INTEGRATIONS_SCHEMA",
+    "EMBEDDING_INTEGRATIONS_SCHEMA",
     "TABLE_SCHEMAS",
+    "NONCHUNKS_SCHEMAS",
 ]

@@ -9,7 +9,6 @@ dependencies = [
     "langchain-text-splitters",
     "langgraph",
     "langgraph-prebuilt",
-    "sentence-transformers",
     "fastapi",
     "uvicorn[standard]",
     "numpy",

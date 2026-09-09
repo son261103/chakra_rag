@@ -4,32 +4,50 @@ import type {
   ChunkDetail,
   ConversationDetail,
   ConversationSummary,
+  CreateEmbeddingIntegrationPayload,
   CreateIntegrationPayload,
+  EmbeddingIntegrationEntry,
   FileChunksResponse,
   FileEntry,
   IngestProgress,
   IntegrationEntry,
   StreamEvent,
+  TestEmbeddingIntegrationPayload,
+  TestEmbeddingIntegrationResult,
   TestIntegrationPayload,
   TestIntegrationResult,
+  UpdateEmbeddingIntegrationPayload,
   UpdateIntegrationPayload,
 } from "./types";
 
 const BASE = "/api";
 
+/** Lỗi HTTP có status + detail — UI cần phân biệt 409 dimension_mismatch. */
+export class ApiError extends Error {
+  status: number;
+  detail: unknown;
+  constructor(message: string, status: number, detail: unknown) {
+    super(message);
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const raw = await res.text().catch(() => "");
     let msg = raw;
+    let detail: unknown = null;
     try {
       const parsed = JSON.parse(raw);
-      if (parsed.detail) {
+      if (parsed.detail !== undefined) {
+        detail = parsed.detail;
         msg = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
       }
     } catch {
       // giữ nguyên raw
     }
-    throw new Error(msg || `${res.status}`);
+    throw new ApiError(msg || `${res.status}`, res.status, detail);
   }
   return res.json() as Promise<T>;
 }
@@ -273,6 +291,76 @@ export async function activateIntegration(id: string): Promise<IntegrationEntry>
 export async function testIntegration(payload: TestIntegrationPayload): Promise<TestIntegrationResult> {
   return handle<TestIntegrationResult>(
     await fetch(`${BASE}/integrations/test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+  );
+}
+
+/** Quản lý tích hợp Embedding (API + chiều vector). force=true = xác nhận reset index khi đổi chiều. */
+export async function listEmbeddingIntegrations(): Promise<EmbeddingIntegrationEntry[]> {
+  const data = await handle<{ integrations: EmbeddingIntegrationEntry[] }>(
+    await fetch(`${BASE}/embedding-integrations`)
+  );
+  return data.integrations;
+}
+
+export async function getActiveEmbeddingIntegration(): Promise<EmbeddingIntegrationEntry> {
+  return handle<EmbeddingIntegrationEntry>(await fetch(`${BASE}/embedding-integrations/active`));
+}
+
+export async function createEmbeddingIntegration(
+  payload: CreateEmbeddingIntegrationPayload
+): Promise<EmbeddingIntegrationEntry> {
+  return handle<EmbeddingIntegrationEntry>(
+    await fetch(`${BASE}/embedding-integrations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+  );
+}
+
+export async function updateEmbeddingIntegration(
+  id: string,
+  payload: UpdateEmbeddingIntegrationPayload
+): Promise<EmbeddingIntegrationEntry> {
+  return handle<EmbeddingIntegrationEntry>(
+    await fetch(`${BASE}/embedding-integrations/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+  );
+}
+
+export async function deleteEmbeddingIntegration(id: string, force = false): Promise<void> {
+  await handle<{ ok: boolean }>(
+    await fetch(
+      `${BASE}/embedding-integrations/${encodeURIComponent(id)}${force ? "?force=true" : ""}`,
+      { method: "DELETE" }
+    )
+  );
+}
+
+export async function activateEmbeddingIntegration(
+  id: string,
+  force = false
+): Promise<EmbeddingIntegrationEntry> {
+  return handle<EmbeddingIntegrationEntry>(
+    await fetch(
+      `${BASE}/embedding-integrations/${encodeURIComponent(id)}/activate${force ? "?force=true" : ""}`,
+      { method: "POST" }
+    )
+  );
+}
+
+export async function testEmbeddingIntegration(
+  payload: TestEmbeddingIntegrationPayload
+): Promise<TestEmbeddingIntegrationResult> {
+  return handle<TestEmbeddingIntegrationResult>(
+    await fetch(`${BASE}/embedding-integrations/test`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

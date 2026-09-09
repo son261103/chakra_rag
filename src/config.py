@@ -64,8 +64,12 @@ class Config:
     # Mã hóa API key (Envelope encryption KEK)
     encryption_key: str = "chakra-default-secret-encryption-key-2026"
 
-    # Embedding (local)
-    embed_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    # Embedding: KHÔNG có credential/base_url/model trong env — mọi thứ cấu hình
+    # qua Settings UI (bảng `embedding_integrations`). Duy nhất `embed_dim` là
+    # CHIỀU MẶC ĐỊNH cho DB (env EMBED_DIM): DB mới chưa có integration nào dùng
+    # nó để dựng bảng `chunks` rỗng; thêm integration đầu tiên sẽ đồng bộ chiều
+    # theo model khai báo trong UI. Muốn đổi chiều mặc định → sửa EMBED_DIM.
+    embed_dim: int = 1024
 
     # Database (PostgreSQL + pgvector)
     db_host: str = "localhost"
@@ -132,10 +136,7 @@ def get_config() -> Config:
         llm_model=_env("LLM_MODEL", "gpt-4o-mini"),
         llm_max_retries=_env_int("LLM_MAX_RETRIES", 5),
         llm_timeout=_env_float("LLM_TIMEOUT", 90.0),
-        embed_model=_env(
-            "EMBED_MODEL",
-            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        ),
+        embed_dim=_env_int("EMBED_DIM", 1024),
         db_host=db_host,
         db_port=db_port,
         db_user=db_user,

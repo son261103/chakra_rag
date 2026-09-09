@@ -180,6 +180,46 @@ class ChunkRepository:
         with self.db.engine.connect() as conn:
             return conn.scalar(select(func.count()).select_from(self.chunks)) or 0
 
+    # ---------- số chiều cột vector ----------
+
+    def vector_dimension(self) -> int | None:
+        """Chiều thực tế của cột `chunks.embedding` (pgvector lưu atttypmod = dim + 4).
+
+        Trả None nếu bảng/chưa có dimension ràng buộc.
+        """
+        sql = (
+            "SELECT atttypmod FROM pg_attribute "
+            "WHERE attrelid = 'chunks'::regclass "
+            "AND attname = 'embedding' AND NOT attisdropped"
+        )
+        with self.db.engine.connect() as conn:
+            typmod = conn.scalar(sql_text(sql))
+        if typmod is None or int(typmod) < 0:
+            return None
+        return int(typmod) - 4
+
+    def migrate_dimension(self, new_dim: int) -> None:
+        """Đổi chiều cột embedding: hạ HNSW index → truncate chunks → ALTER TYPE → tạo lại index.
+
+        Vector cũ vô nghĩa với model chiều khác — CHỈ gọi sau khi user xác nhận
+        đổi chiều trong UI (file giữ nguyên trên đĩa + bảng files, reingest thủ công).
+        """
+        new_dim = int(new_dim)
+        if new_dim <= 0:
+            raise ValueError("dimension phải là số nguyên dương")
+        with self.db.engine.begin() as conn:
+            conn.execute(sql_text("DROP INDEX IF EXISTS idx_chunks_embedding"))
+            conn.execute(sql_text("TRUNCATE TABLE chunks"))
+            conn.execute(
+                sql_text(f"ALTER TABLE chunks ALTER COLUMN embedding TYPE vector({new_dim})")
+            )
+            conn.execute(
+                sql_text(
+                    "CREATE INDEX idx_chunks_embedding "
+                    "ON chunks USING hnsw (embedding vector_l2_ops)"
+                )
+            )
+
     # ---------- vector search ----------
 
     def vector_search(self, query_embedding: np.ndarray, top_k: int) -> list[dict[str, Any]]:

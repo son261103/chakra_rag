@@ -21,7 +21,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 
 from config import build_db_url, get_config
-from storage.schema import SCHEMA
+from storage.schema import SCHEMA, SCHEMA_NO_CHUNKS
 
 
 def _normalize_db_url(url: str) -> str:
@@ -54,7 +54,7 @@ class Database:
     def __init__(
         self,
         db_url: str | Path | None = None,
-        embed_dim: int = 384,
+        embed_dim: int | None = None,
         schema_name: str | None = None,
     ):
         raw_url = str(db_url) if db_url is not None else ""
@@ -95,6 +95,21 @@ class Database:
         )
 
         with self.engine.begin() as conn:
+            if embed_dim is None:
+                # Auto-resolve số chiều cho DDL `chunks`: chạy phần schema không
+                # chứa `{dim}` trước (bảng `embedding_integrations` phải tồn tại),
+                # đọc dimension của integration đang active. DB mới chưa có
+                # integration nào → cfg.embed_dim (env EMBED_DIM = chiều mặc định
+                # của DB, không phải fallback credential; thêm integration đầu
+                # tiên sẽ đồng bộ chiều theo model khai báo trong UI).
+                conn.execute(text(SCHEMA_NO_CHUNKS))
+                dim_row = conn.execute(
+                    text(
+                        "SELECT dimension FROM embedding_integrations "
+                        "WHERE is_active = 1 LIMIT 1"
+                    )
+                ).scalar()
+                embed_dim = int(dim_row) if dim_row else get_config().embed_dim
             conn.execute(text(SCHEMA.format(dim=embed_dim)))
 
     def close(self) -> None:
