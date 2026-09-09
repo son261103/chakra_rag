@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { getFileChunks } from "../../api/client";
 import type { ChunkDetail, FileChunksResponse, FileEntry } from "../../api/types";
-
+import ErrorBanner from "../common/ErrorBanner";
 interface Props {
   file: FileEntry | null;
   onClose: () => void;
@@ -145,11 +145,7 @@ export default function DocumentDrawer({ file, onClose }: Props) {
           </button>
         </div>
 
-        {meta.error && <div className="error-banner small doc-error">{meta.error}</div>}
-        {error && <div className="error-banner small doc-error">{error}</div>}
-        {data?.full_text_error && tab === "full" && (
-          <div className="error-banner small doc-error">{data.full_text_error}</div>
-        )}
+        <ErrorBanner error={meta.error || error || (tab === "full" ? data?.full_text_error ?? null : null)} className="mx-4 mt-2" />
 
         {loading && <div className="doc-loading">Đang tải dữ liệu…</div>}
 

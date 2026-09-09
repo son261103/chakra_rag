@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { AlertCircle, Check, FileText, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { deleteFile, reingestFile, uploadFile } from "../../api/client";
+import { notify } from "../../exceptions";
+import ErrorBanner from "../common/ErrorBanner";
 import type { FileEntry, IngestProgress } from "../../api/types";
 
 interface Props {
@@ -54,10 +56,17 @@ export default function FileDrawer({ open, onClose, files, progress, onInspectFi
     setUploading(true);
     setActionError(null);
     try {
-      for (const file of Array.from(selected)) {
+      const fileList = Array.from(selected);
+      for (const file of fileList) {
         await uploadFile(file);
       }
+      notify.success(
+        fileList.length === 1
+          ? `Đã tải lên «${fileList[0].name}»`
+          : `Đã tải lên ${fileList.length} tài liệu`
+      );
     } catch (e) {
+      notify.error(e, "Không thể tải lên tài liệu");
       setActionError(String(e));
     } finally {
       setUploading(false);
@@ -71,7 +80,9 @@ export default function FileDrawer({ open, onClose, files, progress, onInspectFi
     setActionError(null);
     try {
       await reingestFile(fileId);
+      notify.success("Bắt đầu xử lý lại tài liệu");
     } catch (e) {
+      notify.error(e, "Lỗi khi xử lý lại tài liệu");
       setActionError(String(e));
     } finally {
       setBusyFileId(null);
@@ -85,7 +96,9 @@ export default function FileDrawer({ open, onClose, files, progress, onInspectFi
     setActionError(null);
     try {
       await deleteFile(fileId);
+      notify.success(`Đã xóa «${name}»`);
     } catch (e) {
+      notify.error(e, "Không thể xóa tài liệu");
       setActionError(String(e));
     } finally {
       setBusyFileId(null);
@@ -183,7 +196,7 @@ export default function FileDrawer({ open, onClose, files, progress, onInspectFi
             onChange={(e) => handleFiles(e.target.files)}
           />
 
-          {actionError && <div className="error-banner small">{actionError}</div>}
+          <ErrorBanner error={actionError} onDismiss={() => setActionError(null)} />
 
           {/* Danh sách tài liệu */}
           <div className="flex items-center justify-between px-1 pt-1 text-muted">

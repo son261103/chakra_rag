@@ -6,8 +6,8 @@ INTEGRATIONS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS llm_integrations (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    provider TEXT NOT NULL DEFAULT,
-    base_url TEXT NOT NULL DEFAULT,
+    provider TEXT NOT NULL,
+    base_url TEXT NOT NULL,
     model TEXT NOT NULL,
     encrypted_api_key TEXT NOT NULL,
     encrypted_dek TEXT NOT NULL,

@@ -29,7 +29,7 @@ async function handle<T>(res: Response): Promise<T> {
     } catch {
       // giữ nguyên raw
     }
-    throw new Error(msg || `API lỗi (${res.status})`);
+    throw new Error(msg || `${res.status}`);
   }
   return res.json() as Promise<T>;
 }
@@ -49,9 +49,11 @@ export interface IngestSnapshot {
  */
 export function subscribeIngest(
   onSnapshot: (data: IngestSnapshot) => void,
-  onError?: () => void
+  onError?: () => void,
+  onOpen?: () => void
 ): () => void {
   const es = new EventSource(`${BASE}/ingest/events`);
+  es.onopen = () => onOpen?.();
   es.onmessage = (ev) => {
     try {
       onSnapshot(JSON.parse(ev.data) as IngestSnapshot);
@@ -171,7 +173,7 @@ export async function askStream(
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
-      throw new Error(`API ${res.status}: ${detail}`);
+      throw new Error(detail.trim() || `${res.status}`);
     }
     const reader = res.body?.getReader();
     if (!reader) throw new Error("No response body");

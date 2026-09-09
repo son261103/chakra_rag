@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { getChunk } from "../../api/client";
 import type { ChunkDetail } from "../../api/types";
-
+import ErrorBanner from "../common/ErrorBanner";
 interface Props {
   chunkId: string | null;
   onClose: () => void;
@@ -37,7 +37,7 @@ export default function SourceDrawer({ chunkId, onClose }: Props) {
           </button>
         </div>
 
-        {error && <div className="error-banner">{error}</div>}
+        <ErrorBanner error={error} className="mx-4 mt-3" />
 
         {chunk && (
           <div className="drawer-body">

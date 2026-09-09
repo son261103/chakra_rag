@@ -17,6 +17,8 @@ import {
 } from "../api/client";
 import type { AskResponse, ConversationSummary, FileEntry, StreamEvent, ToolTraceEntry } from "../api/types";
 import { useIngestStatus } from "../hooks/useIngestStatus";
+import ToastContainer from "../components/toast/ToastContainer";
+import { notify } from "../exceptions";
 import Sidebar from "../components/sidebar/Sidebar";
 import ChatMessage from "../components/chat/ChatMessage";
 import StreamingMessage, { type StreamingState } from "../components/chat/StreamingMessage";
@@ -25,7 +27,6 @@ import SourceDrawer from "../components/sources/SourceDrawer";
 import DocumentDrawer from "../components/sources/DocumentDrawer";
 import FileDrawer from "../components/files/FileDrawer";
 import SettingsDrawer from "../components/settings/SettingsDrawer";
-
 export interface QAEntry {
   question: string;
   response: AskResponse;
@@ -129,7 +130,7 @@ function messagesToHistory(
 }
 
 export default function App() {
-  const { files, progress, error: ingestError } = useIngestStatus();
+  const { files, progress, connectionStatus, retry } = useIngestStatus();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [history, setHistory] = useState<QAEntry[]>([]);
@@ -142,7 +143,6 @@ export default function App() {
   const [inspectFile, setInspectFile] = useState<FileEntry | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
-  const [askError, setAskError] = useState<string | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   // Thời điểm bắt đầu suy luận — để tính "Đã suy luận trong Xs".
   const thinkStartRef = useRef<number | null>(null);
@@ -156,17 +156,19 @@ export default function App() {
       setConversations(list);
       return list;
     } catch (e) {
-      setAskError(String(e));
       return [] as ConversationSummary[];
     }
   }, []);
 
   const loadConversation = useCallback(async (id: string) => {
-    const detail = await getConversation(id);
-    setActiveConversationId(id);
-    setHistory(messagesToHistory(detail.messages));
-    setStreaming(null);
-    setAskError(null);
+    try {
+      const detail = await getConversation(id);
+      setActiveConversationId(id);
+      setHistory(messagesToHistory(detail.messages));
+      setStreaming(null);
+    } catch (e) {
+      notify.error(e, "Không thể tải hội thoại");
+    }
   }, []);
 
   // Mount: load danh sách hội thoại; nếu có thì mở cái mới nhất.
@@ -178,8 +180,8 @@ export default function App() {
       if (list.length > 0) {
         try {
           await loadConversation(list[0].id);
-        } catch (e) {
-          if (!cancelled) setAskError(String(e));
+        } catch {
+          // Lỗi đã được xử lý trong loadConversation
         }
       }
     })();
@@ -205,10 +207,9 @@ export default function App() {
       setActiveConversationId(conv.id);
       setHistory([]);
       setStreaming(null);
-      setAskError(null);
       setConversations((prev) => [conv, ...prev.filter((c) => c.id !== conv.id)]);
     } catch (e) {
-      setAskError(String(e));
+      notify.error(e, "Không thể tạo hội thoại mới");
     }
   };
 
@@ -217,7 +218,7 @@ export default function App() {
     try {
       await loadConversation(id);
     } catch (e) {
-      setAskError(String(e));
+      notify.error(e, "Không thể mở hội thoại");
     }
   };
 
@@ -237,10 +238,9 @@ export default function App() {
         }
       }
     } catch (e) {
-      setAskError(String(e));
+      notify.error(e, "Không thể xóa hội thoại");
     }
   };
-
   const handleStop = () => {
     if (abortRef.current) {
       abortRef.current.abort();
@@ -252,7 +252,6 @@ export default function App() {
 
   const handleAsk = async (question: string) => {
     if (asking) return;
-    setAskError(null);
     thinkStartRef.current = null;
     setStreaming(EMPTY_STREAM(question));
     setAsking(true);
@@ -265,7 +264,7 @@ export default function App() {
       conversationId = await ensureConversation();
     } catch (e) {
       setStreaming(null);
-      setAskError(String(e));
+      notify.error(e, "Không thể kết nối máy chủ");
       setAsking(false);
       abortRef.current = null;
       return;
@@ -357,7 +356,7 @@ export default function App() {
         return;
       }
       setStreaming(null);
-      setAskError(String(e));
+      notify.error(e, "Lỗi tạo câu trả lời");
       setAsking(false);
     } finally {
       abortRef.current = null;
@@ -391,7 +390,6 @@ export default function App() {
     }
   }, [history.length, streaming]);
 
-  const error = ingestError ?? askError;
 
   return (
     <div className="layout">
@@ -406,6 +404,10 @@ export default function App() {
       />
 
       <main className="chat-area">
+        <ToastContainer
+          connectionStatus={connectionStatus}
+          onRetryConnection={retry}
+        />
         <div ref={chatScrollRef} className="chat-scroll side-scroll">
           {history.length === 0 && !asking && !streaming && (
             <div className="empty-state">
@@ -468,7 +470,7 @@ export default function App() {
             />
           )}
 
-          {error && <div className="error-banner">{error}</div>}
+
         </div>
 
         <Composer

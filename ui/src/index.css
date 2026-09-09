@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
 /* ===== Design tokens — palette đồng bộ portfolio (sonpham.dev) =====
    Light: nền #F8FAF9, accent #267A66 | Dark: nền #070A0A, accent #9BCEC1
    Dùng CSS variables + class .dark trên <html> (không dùng dark: variant),
@@ -142,5 +143,64 @@ body {
 
 .side-scroll {
   /* class helper giữ tương thích */
+}
+
+/* ===== iOS Dynamic Island & Notification Spring Animations ===== */
+@keyframes dynamicIslandDown {
+  0% {
+    transform: translateY(-130%) scale(0.85);
+    opacity: 0;
+    filter: blur(6px);
+  }
+  65% {
+    transform: translateY(3px) scale(1.015);
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@keyframes dynamicIslandUp {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    transform: translateY(-130%) scale(0.88);
+    opacity: 0;
+    filter: blur(5px);
+  }
+}
+
+@keyframes dynamicIslandPulse {
+  0% {
+    transform: scale(0.96);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-dynamic-island-down {
+  animation: dynamicIslandDown 420ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-dynamic-island-up {
+  animation: dynamicIslandUp 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-dynamic-island-pulse {
+  animation: dynamicIslandPulse 350ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 

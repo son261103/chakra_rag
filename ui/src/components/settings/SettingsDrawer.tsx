@@ -22,13 +22,13 @@ import {
   updateIntegration,
 } from "../../api/client";
 import type { CreateIntegrationPayload, IntegrationEntry, UpdateIntegrationPayload } from "../../api/types";
-
+import ErrorBanner from "../common/ErrorBanner";
+import { notify } from "../../exceptions";
 interface Props {
   open: boolean;
   onClose: () => void;
   onChanged?: () => void;
 }
-
 export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
   const [integrations, setIntegrations] = useState<IntegrationEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -137,8 +137,10 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
       const updatedList = await listIntegrations();
       setIntegrations(updatedList);
       setDetailItem((prev) => (prev && prev.id === id ? { ...prev, is_active: true } : prev));
+      notify.success("Đã kích hoạt cấu hình LLM");
       onChanged?.();
     } catch (e) {
+      notify.error(e, "Không thể kích hoạt cấu hình");
       setActionError(String(e));
     } finally {
       setBusyId(null);
@@ -153,8 +155,10 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
       await deleteIntegration(id);
       if (detailItem?.id === id) closeModal();
       await fetchIntegrations();
+      notify.success(`Đã xóa «${name}»`);
       onChanged?.();
     } catch (e) {
+      notify.error(e, "Không thể xóa cấu hình");
       setActionError(String(e));
     } finally {
       setBusyId(null);
@@ -226,9 +230,11 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
         const updatedList = await listIntegrations();
         setIntegrations(updatedList);
         closeModal();
+        notify.success(editingId ? "Đã cập nhật cấu hình LLM" : "Đã thêm cấu hình LLM mới");
       }
       onChanged?.();
     } catch (err) {
+      notify.error(err, "Không thể lưu cấu hình");
       setActionError(String(err));
     } finally {
       setBusyId(null);
@@ -254,19 +260,7 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
 
         {/* Body */}
         <div className="drawer-body flex flex-col gap-4 overflow-y-auto p-5">
-          {actionError && (
-            <div className="flex items-start gap-2 rounded-lg border border-red/20 bg-red/10 p-3 text-[13px] text-red">
-              <AlertCircle size={16} className="mt-0.5 shrink-0" />
-              <div className="flex-1">{actionError}</div>
-              <button
-                type="button"
-                className="text-red hover:opacity-80"
-                onClick={() => setActionError(null)}
-              >
-                <X size={14} />
-              </button>
-            </div>
-          )}
+          <ErrorBanner error={actionError} onDismiss={() => setActionError(null)} />
 
           {/* Add integration button */}
           <button
@@ -438,19 +432,7 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
             </div>
 
             {/* Modal Error Banner if any */}
-            {actionError && (
-              <div className="mx-5 mt-4 flex items-start gap-2 rounded-xl border border-red/25 bg-red/10 p-3 text-[12.5px] text-red shrink-0">
-                <AlertCircle size={15} className="mt-0.5 shrink-0" />
-                <div className="flex-1">{actionError}</div>
-                <button
-                  type="button"
-                  className="text-red hover:opacity-80"
-                  onClick={() => setActionError(null)}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            )}
+            <ErrorBanner error={actionError} onDismiss={() => setActionError(null)} className="mx-5 mt-4 shrink-0" />
 
             {/* Modal Body */}
             <div className="p-5 sm:p-6 overflow-y-auto flex-1 flex flex-col gap-4">
@@ -638,14 +620,37 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
                    {/* Test result status */}
                    {testResult && (
                      <div
-                       className={`rounded-xl border p-3 text-[12px] flex items-start gap-2 ${
+                       className={`rounded-xl border p-3 text-[12px] flex items-start gap-2.5 shadow-xs ${
                          testResult.ok
-                           ? "border-green/30 bg-green/10 text-green"
-                           : "border-red/30 bg-red/10 text-red"
+                           ? "border-emerald-200 dark:border-accent/40 bg-bg-card text-text"
+                           : "border-red-200 dark:border-red/35 bg-bg-card text-text"
                        }`}
                      >
-                       <AlertCircle size={15} className="mt-0.5 shrink-0" />
-                       <div className="flex-1">{testResult.msg}</div>
+                       <div
+                         className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md mt-0.5 ${
+                           testResult.ok
+                             ? "bg-emerald-100 dark:bg-accent/20 text-emerald-700 dark:text-accent"
+                             : "bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400"
+                         }`}
+                       >
+                         {testResult.ok ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+                       </div>
+                       <div className="flex-1 leading-relaxed">
+                         <span
+                           className={`font-medium ${
+                             testResult.ok
+                               ? "text-emerald-700 dark:text-accent"
+                               : "text-red-700 dark:text-red-400"
+                           }`}
+                         >
+                           {testResult.ok ? "Kết nối thành công" : "Kiểm tra kết nối thất bại"}
+                         </span>
+                         {testResult.msg && (
+                           <p className="mt-0.5 text-[11.5px] text-muted break-words">
+                             {testResult.msg}
+                           </p>
+                         )}
+                       </div>
                      </div>
                    )}
                  </form>

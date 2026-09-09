@@ -293,7 +293,7 @@
 /* ================= Chat area ================= */
 
 .chat-area {
-  @apply flex h-screen min-w-0 flex-col;
+  @apply relative flex h-screen min-w-0 flex-col;
 }
 
 .chat-scroll {
@@ -303,39 +303,38 @@
 /* Empty state */
 
 .empty-state {
-  @apply relative mx-auto my-auto w-full max-w-[min(70rem,calc(100%-3rem))] px-4 sm:px-6 text-center flex flex-col items-center justify-center py-6;
+  @apply relative mx-auto my-auto w-full max-w-[860px] px-4 sm:px-6 text-center flex flex-col items-center justify-center py-6;
 }
 
-
 .empty-hero {
-  @apply flex flex-col items-center max-w-[760px] mb-8 px-2 text-center;
+  @apply flex flex-col items-center max-w-[640px] mb-6 px-2 text-center;
 }
 
 .empty-logo {
-  @apply mx-auto mb-3.5 grid size-[46px] place-items-center rounded-2xl bg-accent text-accent-contrast shadow-sm transition-transform duration-200;
+  @apply mx-auto mb-3 grid size-[42px] place-items-center rounded-xl bg-accent text-accent-contrast shadow-sm transition-transform duration-200;
 }
 
 .empty-logo:hover {
-  transform: scale(1.05);
+  transform: scale(1.04);
 }
 
 .empty-hero h2 {
-  @apply m-0 text-[23px] sm:text-[27px] font-semibold tracking-[-0.025em] text-text text-center;
+  @apply m-0 text-[21px] sm:text-[24px] font-semibold tracking-[-0.02em] text-text text-center;
 }
 
 .suggestions {
-  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 w-full max-w-[980px] mx-auto;
+  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3 w-full max-w-[860px] mx-auto;
 }
 
 .suggestion-chip {
-  @apply cursor-pointer rounded-2xl border border-border/80 bg-bg-card/70 p-4 text-left transition-all duration-150 flex flex-col justify-between gap-3;
+  @apply cursor-pointer rounded-xl border border-border/70 bg-bg-card/60 p-3 sm:p-3.5 text-left transition-all duration-150 flex flex-col justify-between gap-2.5;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-  min-height: 104px;
+  min-height: 82px;
 }
 
 .suggestion-chip:hover:not(:disabled) {
-  @apply bg-bg-elevated border-accent/40 shadow-xs;
-  transform: translateY(-1.5px);
+  @apply bg-bg-card border-accent/40 shadow-xs;
+  transform: translateY(-1px);
 }
 
 .suggestion-chip:disabled {
@@ -385,7 +384,7 @@
 /* Messages */
 
 .message-pair {
-  @apply mx-auto flex w-full max-w-[min(70rem,calc(100%-3rem))] flex-col gap-3.5 px-4 sm:px-6 md:px-8 py-2.5;
+  @apply mx-auto flex w-full max-w-[860px] flex-col gap-3 px-4 sm:px-6 py-2.5;
 }
 
 .user-row {
@@ -871,32 +870,31 @@
 /* Error banner */
 
 .error-banner {
-  @apply mx-auto my-2 w-full rounded-xl border border-red/40 bg-red/10 p-[10px_16px] text-[13px] text-red;
-  max-width: min(70rem, calc(100% - 3rem));
+  @apply mx-auto my-2 w-full max-w-[860px] rounded-xl border border-red-200 dark:border-red/40 bg-bg-card p-3 sm:px-4 text-[13px] text-red-700 dark:text-red-400 shadow-xs;
 }
 
 .error-banner.small {
-  @apply m-0 p-2.5 text-xs rounded-lg;
+  @apply m-0 p-2.5 text-xs rounded-xl border border-red-200 dark:border-red/40 bg-bg-card text-red-700 dark:text-red-400 shadow-xs;
 }
 
 /* ================= Composer ================= */
 
 .composer-wrap {
-  @apply mx-auto w-full max-w-[min(70rem,calc(100%-3rem))] p-[6px_16px_14px] sm:p-[6px_24px_16px] md:p-[6px_32px_16px];
+  @apply mx-auto w-full max-w-[860px] p-[6px_16px_14px] sm:p-[6px_24px_16px];
 }
 
 .composer {
-  @apply flex items-end gap-2 rounded-[22px] border border-border/85 bg-bg-card p-[10px_12px_10px_18px] transition-all;
+  @apply flex items-end gap-2 rounded-2xl border border-border/85 bg-bg-card p-[8px_10px_8px_16px] transition-all;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
 html.dark .composer {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
 }
 
 .composer:focus-within {
   @apply border-accent/60;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 0 2px var(--accent-soft);
 }
 
 .composer textarea {
