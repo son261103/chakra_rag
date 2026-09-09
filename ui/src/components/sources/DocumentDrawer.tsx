@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertCircle, ArrowLeft, Check, Loader2, X } from "lucide-react";
 import { getFileChunks } from "../../api/client";
 import type { ChunkDetail, FileChunksResponse, FileEntry } from "../../api/types";
+import { formatErrorMessage } from "../../exceptions";
 import ErrorBanner from "../common/ErrorBanner";
+
 interface Props {
   file: FileEntry | null;
   onClose: () => void;
+  onBack?: () => void;
 }
 
 const STATUS_LABEL: Record<FileEntry["status"], string> = {
@@ -23,37 +26,24 @@ function preview(text: string, n = 160): string {
 }
 
 /** Drawer phải: xem full text gốc + chunks đã ingest. */
-export default function DocumentDrawer({ file, onClose }: Props) {
+export default function DocumentDrawer({ file, onClose, onBack }: Props) {
   const [data, setData] = useState<FileChunksResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<"full" | "chunks">("full");
-
-  useEffect(() => {
-    if (!file) {
-      setData(null);
-      setActiveId(null);
-      setQuery("");
-      setError(null);
-      setTab("full");
-      return;
-    }
+  const loadChunks = useCallback((fileId: string) => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    setData(null);
-    setActiveId(null);
-    setQuery("");
-    setTab("full");
-    getFileChunks(file.file_id)
+    getFileChunks(fileId)
       .then((res) => {
         if (cancelled) return;
         setData(res);
-        if (res.chunks.length > 0) setActiveId(res.chunks[0].chunk_id);
+        if (res.chunks.length > 0) setActiveId((prev) => prev ?? res.chunks[0].chunk_id);
         // Không có full text thì mở tab chunks
-        if (!res.full_text) setTab("chunks");
+        if (!res.full_text && res.chunks.length > 0) setTab("chunks");
       })
       .catch((e) => {
         if (!cancelled) setError(String(e));
@@ -64,7 +54,24 @@ export default function DocumentDrawer({ file, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [file?.file_id]);
+  }, []);
+
+  useEffect(() => {
+    if (!file) {
+      setData(null);
+      setActiveId(null);
+      setQuery("");
+      setError(null);
+      setTab("full");
+      return;
+    }
+    setActiveId(null);
+    setQuery("");
+    setTab("full");
+    return loadChunks(file.file_id);
+  }, [file?.file_id, loadChunks]);
+
+
 
   const filtered = useMemo(() => {
     const chunks = data?.chunks ?? [];
@@ -85,43 +92,119 @@ export default function DocumentDrawer({ file, onClose }: Props) {
 
   if (!file) return null;
 
-  const meta = data?.file ?? file;
+  const meta = { ...(data?.file ?? {}), ...file } as FileEntry;
   const fullText = data?.full_text ?? "";
   const fullChars = data?.full_text_chars ?? fullText.length;
   const chunkChars = data?.chunks.reduce((s, c) => s + c.text.length, 0) ?? 0;
+  const activeError = meta.error || error;
 
   return (
     <>
       <div className="drawer-backdrop" onClick={onClose} />
       <aside className="drawer doc-drawer" role="dialog" aria-label="Chi tiết tài liệu">
-        <div className="drawer-header">
-          <div className="doc-drawer-heading">
-            <span className="doc-drawer-kicker">Dữ liệu đã xử lý</span>
-            <h3 title={meta.name}>{meta.name}</h3>
+        {/* Header với nút Back về danh sách và Close */}
+        <div className="drawer-header doc-drawer-header">
+          <div className="doc-drawer-header-left">
+            {onBack && (
+              <button
+                type="button"
+                className="doc-back-btn"
+                onClick={onBack}
+                title="Quay lại danh sách tài liệu"
+                aria-label="Quay lại danh sách tài liệu"
+              >
+                <ArrowLeft size={16} />
+              </button>
+            )}
+            <div className="doc-drawer-heading">
+              <span className="doc-drawer-kicker">Dữ liệu đã xử lý</span>
+              <h3 title={meta.name}>{meta.name}</h3>
+            </div>
           </div>
+
           <button type="button" className="drawer-close" onClick={onClose} aria-label="Đóng">
             <X size={15} />
           </button>
         </div>
 
+        {/* Khối thống kê: 4 card trải đều theo bề ngang, không dồn cục */}
         <div className="doc-summary">
-          <div className={`doc-pill status-${meta.status}`}>{STATUS_LABEL[meta.status]}</div>
-          <div className="doc-stat">
-            <span className="doc-stat-value">{data?.chunk_count ?? meta.chunks_done ?? 0}</span>
-            <span className="doc-stat-label">chunks</span>
+          {/* Card 1: Trạng thái */}
+          <div className="doc-stat-card">
+            <span className="doc-stat-label">Trạng thái</span>
+            <div className="doc-stat-content">
+              <span className={`doc-pill status-${meta.status}`}>
+                {meta.status === "ready" && <Check size={11} className="shrink-0" />}
+                {meta.status === "failed" && <AlertCircle size={11} className="shrink-0" />}
+                {(meta.status === "embedding" ||
+                  meta.status === "chunking" ||
+                  meta.status === "parsing" ||
+                  meta.status === "queued") && (
+                  <Loader2 size={11} className="animate-spin shrink-0" />
+                )}
+                <span>{STATUS_LABEL[meta.status] ?? meta.status}</span>
+              </span>
+            </div>
           </div>
-          <div className="doc-stat">
-            <span className="doc-stat-value">
-              {fullChars > 0 ? `${(fullChars / 1000).toFixed(1)}k` : chunkChars > 0 ? `${(chunkChars / 1000).toFixed(1)}k` : "—"}
-            </span>
-            <span className="doc-stat-label">ký tự gốc</span>
+
+          {/* Card 2: Chunks */}
+          <div className="doc-stat-card">
+            <span className="doc-stat-label">Số chunks</span>
+            <div className="doc-stat-content">
+              <span className="doc-stat-value">{data?.chunk_count ?? meta.chunks_done ?? 0}</span>
+              <span className="doc-stat-unit">chunks</span>
+            </div>
           </div>
-          <div className="doc-stat">
-            <span className="doc-stat-value">{meta.source}</span>
-            <span className="doc-stat-label">nguồn</span>
+
+          {/* Card 3: Ký tự gốc */}
+          <div className="doc-stat-card">
+            <span className="doc-stat-label">Ký tự gốc</span>
+            <div
+              className="doc-stat-content"
+              title={fullChars > 0 ? `${fullChars.toLocaleString()} ký tự` : undefined}
+            >
+              <span className="doc-stat-value">
+                {fullChars > 0
+                  ? `${(fullChars / 1000).toFixed(1)}k`
+                  : chunkChars > 0
+                    ? `${(chunkChars / 1000).toFixed(1)}k`
+                    : "—"}
+              </span>
+              {fullChars > 0 && (
+                <span className="doc-stat-unit">({fullChars.toLocaleString()})</span>
+              )}
+            </div>
+          </div>
+
+          {/* Card 4: Nguồn */}
+          <div className="doc-stat-card">
+            <span className="doc-stat-label">Nguồn</span>
+            <div className="doc-stat-content">
+              <span className="doc-stat-value capitalize">
+                {meta.source === "upload" ? "Tải lên" : meta.source}
+              </span>
+            </div>
           </div>
         </div>
 
+        {/* Khối thông báo lỗi: chỉ giữ text thông báo */}
+        {activeError && (
+          <div className="doc-alert-wrap">
+            <div className="doc-alert-box" role="alert">
+              <div className="doc-alert-icon">
+                <AlertCircle size={15} />
+              </div>
+              <div className="doc-alert-body">
+                <div className="doc-alert-title">
+                  {meta.status === "failed" ? "Lỗi xử lý tài liệu" : "Lỗi tải dữ liệu"}
+                </div>
+                <div className="doc-alert-desc">{formatErrorMessage(activeError)}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tabs: Toàn văn và Chunks */}
         <div className="doc-tabs" role="tablist">
           <button
             type="button"
@@ -145,12 +228,15 @@ export default function DocumentDrawer({ file, onClose }: Props) {
           </button>
         </div>
 
-        <ErrorBanner error={meta.error || error || (tab === "full" ? data?.full_text_error ?? null : null)} className="mx-4 mt-2" />
-
         {loading && <div className="doc-loading">Đang tải dữ liệu…</div>}
 
         {!loading && data && tab === "full" && (
           <div className="doc-full-pane side-scroll">
+            {data?.full_text_error && (
+              <div className="p-4 pb-0">
+                <ErrorBanner error={data.full_text_error} />
+              </div>
+            )}
             {fullText ? (
               <pre className="doc-full-text">{fullText}</pre>
             ) : (
@@ -161,6 +247,19 @@ export default function DocumentDrawer({ file, onClose }: Props) {
           </div>
         )}
 
+        {!loading && !data && tab === "full" && (
+          <div className="file-empty p-8">
+            {meta.status === "failed"
+              ? "Tài liệu bị lỗi trong quá trình xử lý. Bấm \"Nhúng lại\" sau khi đã cấu hình embedding."
+              : "Chưa có dữ liệu toàn văn"}
+          </div>
+        )}
+
+        {!loading && !data && tab === "chunks" && (
+          <div className="file-empty p-8">
+            Chưa có chunk — file lỗi hoặc chưa nhúng xong
+          </div>
+        )}
         {!loading && data && tab === "chunks" && (
           <div className="doc-body">
             <div className="doc-list-pane">

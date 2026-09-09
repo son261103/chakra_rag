@@ -4,7 +4,7 @@
  * - "Tích hợp Embedding": model nhúng vector (API + chiều vector).
  * Nội dung list + modal dùng chung `IntegrationPanel`.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Settings, X } from "lucide-react";
 import IntegrationPanel, { type IntegrationKind } from "./IntegrationPanel";
 
@@ -12,10 +12,16 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onChanged?: () => void;
+  initialTab?: IntegrationKind;
 }
 
-export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
-  const [tab, setTab] = useState<IntegrationKind>("llm");
+export default function SettingsDrawer({ open, onClose, onChanged, initialTab }: Props) {
+  const [tab, setTab] = useState<IntegrationKind>(initialTab ?? "llm");
+  useEffect(() => {
+    if (open && initialTab) {
+      setTab(initialTab);
+    }
+  }, [open, initialTab]);
 
   if (!open) return null;
 
@@ -35,7 +41,6 @@ export default function SettingsDrawer({ open, onClose, onChanged }: Props) {
             <X size={15} />
           </button>
         </div>
-
         {/* Tabs: LLM | Embedding */}
         <div className="px-5 pt-4">
           <div className="flex gap-1 rounded-xl bg-bg-elevated p-1" role="tablist">

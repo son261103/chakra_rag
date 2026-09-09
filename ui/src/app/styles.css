@@ -1082,7 +1082,19 @@ html.dark .composer {
 /* ================= Document inspector drawer ================= */
 
 .doc-drawer {
-  @apply w-[min(720px,96vw)];
+  @apply w-[min(760px,96vw)];
+}
+
+.doc-drawer-header {
+  @apply flex items-center justify-between gap-3 border-b border-border p-[14px_20px];
+}
+
+.doc-drawer-header-left {
+  @apply flex items-center gap-2.5 min-w-0 flex-1;
+}
+
+.doc-back-btn {
+  @apply flex size-7 items-center justify-center rounded-lg border border-border bg-bg-soft text-muted hover:text-text hover:bg-bg-elevated hover:border-accent/40 transition-all cursor-pointer shrink-0;
 }
 
 .doc-drawer-heading {
@@ -1090,22 +1102,49 @@ html.dark .composer {
 }
 
 .doc-drawer-kicker {
-  @apply text-[11px] font-semibold uppercase tracking-[0.06em] text-muted;
+  @apply text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted;
   font-family: var(--font-mono);
 }
 
 .doc-drawer-heading h3 {
-  @apply m-0 max-w-[min(560px,70vw)] overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-bold;
+  @apply m-0 max-w-[min(540px,62vw)] overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-bold text-text;
 }
 
+
+
 .doc-summary {
-  @apply flex flex-wrap items-center gap-[10px_14px] border-b border-border p-[12px_20px];
+  @apply grid grid-cols-2 sm:grid-cols-4 gap-2.5 border-b border-border p-[14px_20px];
   background: linear-gradient(180deg, var(--bg-soft) 0%, var(--bg-card) 100%);
 }
 
+.doc-stat-card {
+  @apply flex flex-col justify-center gap-1 rounded-xl border border-border/80 bg-bg-card/70 p-[10px_12px] transition-colors min-w-0;
+}
+
+.doc-stat-card:hover {
+  @apply border-border bg-bg-card;
+}
+
+.doc-stat-label {
+  @apply text-[10px] font-semibold uppercase tracking-[0.06em] text-muted;
+  font-family: var(--font-mono);
+}
+
+.doc-stat-content {
+  @apply flex items-center gap-1.5 min-w-0;
+}
+
+.doc-stat-value {
+  @apply text-sm font-bold tracking-[-0.02em] text-text truncate;
+  font-variant-numeric: tabular-nums;
+}
+
+.doc-stat-unit {
+  @apply text-[11px] text-muted font-normal truncate;
+}
+
 .doc-pill {
-  @apply rounded-full border border-border bg-bg-soft px-2.5 py-1 text-[11.5px] font-bold text-muted;
-  padding: 4px 10px;
+  @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-bg-soft px-2.5 py-0.5 text-[11px] font-bold text-muted;
 }
 
 .doc-pill.status-ready {
@@ -1138,18 +1177,28 @@ html.dark .doc-pill.status-queued {
   @apply border-amber-700/60 bg-amber-900/30 text-amber-300;
 }
 
-.doc-stat {
-  @apply flex min-w-[52px] flex-col gap-0;
+.doc-alert-wrap {
+  @apply border-b border-border p-[12px_20px] bg-red-50/40 dark:bg-red-950/20;
 }
 
-.doc-stat-value {
-  @apply text-sm font-bold tracking-[-0.02em] text-text;
-  font-variant-numeric: tabular-nums;
+.doc-alert-box {
+  @apply flex items-start gap-2.5 rounded-xl border border-red-200 dark:border-red-900/50 bg-bg-card p-3 shadow-xs;
 }
 
-.doc-stat-label {
-  @apply text-[10.5px] uppercase tracking-[0.04em] text-muted;
-  font-family: var(--font-mono);
+.doc-alert-icon {
+  @apply flex size-6 shrink-0 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 mt-0.5;
+}
+
+.doc-alert-body {
+  @apply flex flex-col gap-0.5 min-w-0 flex-1;
+}
+
+.doc-alert-title {
+  @apply text-xs font-bold text-red-700 dark:text-red-300;
+}
+
+.doc-alert-desc {
+  @apply text-xs leading-relaxed text-text/90 break-words;
 }
 
 .doc-error {

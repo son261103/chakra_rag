@@ -27,6 +27,7 @@ import SourceDrawer from "../components/sources/SourceDrawer";
 import DocumentDrawer from "../components/sources/DocumentDrawer";
 import FileDrawer from "../components/files/FileDrawer";
 import SettingsDrawer from "../components/settings/SettingsDrawer";
+import type { IntegrationKind } from "../components/settings/IntegrationPanel";
 export interface QAEntry {
   question: string;
   response: AskResponse;
@@ -143,6 +144,7 @@ export default function App() {
   const [inspectFile, setInspectFile] = useState<FileEntry | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<IntegrationKind>("llm");
   const chatScrollRef = useRef<HTMLDivElement>(null);
   // Thời điểm bắt đầu suy luận — để tính "Đã suy luận trong Xs".
   const thinkStartRef = useRef<number | null>(null);
@@ -400,7 +402,10 @@ export default function App() {
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={handleDeleteConversation}
         onOpenFiles={() => setFileDrawerOpen(true)}
-        onOpenSettings={() => setSettingsDrawerOpen(true)}
+        onOpenSettings={() => {
+          setSettingsTab("llm");
+          setSettingsDrawerOpen(true);
+        }}
       />
 
       <main className="chat-area">
@@ -481,7 +486,14 @@ export default function App() {
       </main>
 
       <SourceDrawer chunkId={selectedChunkId} onClose={() => setSelectedChunkId(null)} />
-      <DocumentDrawer file={inspectFile} onClose={() => setInspectFile(null)} />
+      <DocumentDrawer
+        file={inspectFile ? (files.find((f) => f.file_id === inspectFile.file_id) ?? inspectFile) : null}
+        onClose={() => setInspectFile(null)}
+        onBack={() => {
+          setInspectFile(null);
+          setFileDrawerOpen(true);
+        }}
+      />
       <FileDrawer
         open={fileDrawerOpen}
         onClose={() => setFileDrawerOpen(false)}
@@ -496,6 +508,7 @@ export default function App() {
       <SettingsDrawer
         open={settingsDrawerOpen}
         onClose={() => setSettingsDrawerOpen(false)}
+        initialTab={settingsTab}
       />
     </div>
   );

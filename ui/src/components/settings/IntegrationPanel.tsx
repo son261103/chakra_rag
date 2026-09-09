@@ -5,11 +5,13 @@
  * đổi chiều: backend trả 409 dimension_mismatch → dialog xác nhận → gửi lại
  * force=true (server reset index, mọi file chuyển "cần nạp lại").
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Eye,
   EyeOff,
   KeyRound,
@@ -81,16 +83,8 @@ function confirmDimensionReset(detail: DimensionMismatchDetail): boolean {
   );
 }
 
-// Các chiều vector phổ biến — dropdown "giao diện chọn chiều"; 1024 là chiều
-// mặc định đã chọn sẵn (khớp EMBED_DIM mặc định của DB). Giá trị khác → "Khác…".
-const DIMENSION_OPTIONS = [1024, 1536, 3072, 768, 512, 256];
+const DIMENSION_OPTIONS = [256, 512, 768, 1024, 1536, 3072];
 const DEFAULT_DIMENSION = 1024;
-const DIMENSION_HINTS: Record<number, string> = {
-  1024: "Mistral embed, Voyage, Jina v3",
-  1536: "OpenAI text-embedding-3-small",
-  3072: "OpenAI text-embedding-3-large",
-  768: "Nomic embed, Gemini",
-};
 
 export default function IntegrationPanel({ kind, onChanged }: Props) {
   const defaults = KIND_DEFAULTS[kind];
@@ -119,7 +113,19 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
   // Test state
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [dimensionDropdownOpen, setDimensionDropdownOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
+  // Nếu đang sửa cấu hình cũ có số chiều ngoài danh sách (vd: 384 MiniLM), vẫn giữ hiển thị
+  const availableDimensionOptions = useMemo(() => {
+    const custom = parseInt(formDimension, 10);
+    if (custom > 0 && !DIMENSION_OPTIONS.includes(custom)) {
+      return [...DIMENSION_OPTIONS, custom].sort((a, b) => a - b);
+    }
+    return DIMENSION_OPTIONS;
+  }, [formDimension]);
   const fetchIntegrations = useCallback(async () => {
     setLoading(true);
     setActionError(null);
@@ -139,8 +145,9 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
     setTestResult(null);
     setTesting(false);
     setActionError(null);
+    setDimensionDropdownOpen(false);
+    setDropdownPos(null);
   }, []);
-
   useEffect(() => {
     void fetchIntegrations();
     closeModal();
@@ -155,8 +162,61 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [modalMode, closeModal]);
 
-  const activeIntegration = integrations.find((i) => i.is_active);
+  const toggleDropdown = () => {
+    if (dimensionDropdownOpen) {
+      setDimensionDropdownOpen(false);
+      return;
+    }
+    if (triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      const menuHeight = 250;
+      const spaceBelow = window.innerHeight - r.bottom;
+      const placeAbove = spaceBelow < menuHeight + 16 && r.top > menuHeight;
+      setDropdownPos({
+        left: r.left,
+        top: placeAbove ? r.top - menuHeight - 6 : r.bottom + 6,
+        width: r.width,
+      });
+    }
+    setDimensionDropdownOpen(true);
+  };
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(target) &&
+        menuRef.current &&
+        !menuRef.current.contains(target)
+      ) {
+        setDimensionDropdownOpen(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setDimensionDropdownOpen(false);
+      }
+    }
+    function handleScrollOrResize(e: Event) {
+      if (menuRef.current && menuRef.current.contains(e.target as Node)) return;
+      setDimensionDropdownOpen(false);
+    }
+    if (dimensionDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      window.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("scroll", handleScrollOrResize, true);
+      window.addEventListener("resize", handleScrollOrResize);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+        window.removeEventListener("keydown", handleKeyDown);
+        window.removeEventListener("scroll", handleScrollOrResize, true);
+        window.removeEventListener("resize", handleScrollOrResize);
+      };
+    }
+  }, [dimensionDropdownOpen]);
 
+
+  const activeIntegration = integrations.find((i) => i.is_active);
   const openViewModal = (item: Entry) => {
     setDetailItem(item);
     setModalMode("view");
@@ -386,19 +446,23 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
     <>
       <ErrorBanner error={actionError} onDismiss={() => setActionError(null)} />
 
-      {/* Add integration button */}
-      <button type="button" onClick={openCreateModal} className="drawer-action-btn">
-        <Plus size={15} />
-        <span>Thêm cấu hình tích hợp mới</span>
-      </button>
-
       {/* Integrations Table / List */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between px-1 pt-1 text-muted">
           <span className="block-label p-0">Danh sách tích hợp · {integrations.length}</span>
-          {loading && <Loader2 size={13} className="animate-spin text-muted" />}
+          <div className="flex items-center gap-2">
+            {loading && <Loader2 size={13} className="animate-spin text-muted" />}
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="flex size-6 items-center justify-center rounded-md bg-accent text-accent-contrast hover:bg-accent-hover transition-all cursor-pointer shadow-xs active:scale-95"
+              title={`Thêm cấu hình ${defaults.label} mới`}
+              aria-label={`Thêm cấu hình ${defaults.label} mới`}
+            >
+              <Plus size={13} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
-
         <div className="flex flex-col gap-2">
           {integrations.map((item) => {
             const isBusy = busyId === item.id;
@@ -485,10 +549,21 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
           })}
 
           {integrations.length === 0 && !loading && (
-            <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-8 text-center text-muted">
+            <div
+              className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-8 text-center text-muted cursor-pointer hover:border-accent/50 hover:bg-bg-elevated/30 transition-all"
+              onClick={openCreateModal}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openCreateModal();
+                }
+              }}
+            >
               <div className="text-[13px] font-medium text-text">Chưa có cấu hình nào</div>
               <div className="text-[11.5px] text-muted">
-                Bấm &quot;Thêm cấu hình tích hợp mới&quot; để thiết lập {defaults.label}
+                Bấm vào đây hoặc nút <span className="font-bold text-accent">+</span> ở góc trên để thiết lập {defaults.label}
               </div>
             </div>
           )}
@@ -616,10 +691,10 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                     {isEmbedding && (
                       <div className="flex flex-col gap-1.5 rounded-xl bg-bg-elevated/50 border border-border/60 p-3">
                         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                          Chiều vector (dimension)
+                          Chiều vector
                         </span>
                         <span className="font-mono text-text text-[13px]">
-                          {(detailItem as EmbeddingIntegrationEntry).dimension} chiều
+                          {(detailItem as EmbeddingIntegrationEntry).dimension}
                         </span>
                       </div>
                     )}
@@ -725,55 +800,73 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                       />
                     </div>
 
-                    {/* Chiều vector — chỉ embedding: dropdown giá trị phổ biến + Khác… */}
+                    {/* Chiều vector — chỉ embedding: dropdown đồng bộ vibe, portaled tránh giãn modal và double scroll */}
                     {isEmbedding && (
                       <div className="flex flex-col gap-1.5">
                         <label className="text-[12px] font-semibold text-muted">
-                          Chiều vector (dimension) *
+                          Chiều vector *
                         </label>
-                        <select
-                          value={
-                            DIMENSION_OPTIONS.includes(parseInt(formDimension, 10))
-                              ? formDimension
-                              : "custom"
-                          }
-                          onChange={(e) => {
-                            if (e.target.value === "custom") {
-                              setFormDimension("");
-                            } else {
-                              setFormDimension(e.target.value);
-                            }
-                          }}
-                          className="rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[12.5px] text-text focus:border-accent"
+                        <button
+                          ref={triggerRef}
+                          type="button"
+                          onClick={toggleDropdown}
+                          className="w-full flex items-center justify-between rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[13px] font-medium text-text transition hover:border-accent/40 hover:bg-bg-elevated/40 focus:border-accent cursor-pointer select-none"
+                          aria-haspopup="listbox"
+                          aria-expanded={dimensionDropdownOpen}
                         >
-                          {DIMENSION_OPTIONS.map((d) => (
-                            <option key={d} value={String(d)}>
-                              {d} chiều{DIMENSION_HINTS[d] ? ` — ${DIMENSION_HINTS[d]}` : ""}
-                            </option>
-                          ))}
-                          <option value="custom">
-                            {DIMENSION_OPTIONS.includes(parseInt(formDimension, 10))
-                              ? "Khác…"
-                              : `Khác… (${formDimension || "nhập số"})`}
-                          </option>
-                        </select>
-                        {!DIMENSION_OPTIONS.includes(parseInt(formDimension, 10)) && (
-                          <input
-                            type="number"
-                            required
-                            min={1}
-                            max={16384}
-                            placeholder="Nhập số chiều model trả về…"
-                            value={formDimension}
-                            onChange={(e) => setFormDimension(e.target.value)}
-                            className="rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[12.5px] text-text placeholder:text-muted focus:border-accent"
+                          <span>{formDimension || String(DEFAULT_DIMENSION)}</span>
+                          <ChevronDown
+                            size={15}
+                            className={`text-muted transition-transform duration-200 ${
+                              dimensionDropdownOpen ? "rotate-180 text-accent" : ""
+                            }`}
                           />
-                        )}
-                        <span className="text-[11px] leading-relaxed text-muted">
-                          Số chiều vector model trả về (mặc định 1024 — Mistral embed).
-                          Bấm &quot;Kiểm tra kết nối&quot; để xác nhận chiều thực tế. Đổi
-                          chiều sẽ phải nạp lại toàn bộ file.
-                        </span>
+                        </button>
+
+                        {dimensionDropdownOpen &&
+                          dropdownPos &&
+                          createPortal(
+                            <div
+                              ref={menuRef}
+                              role="listbox"
+                              style={{
+                                position: "fixed",
+                                top: dropdownPos.top,
+                                left: dropdownPos.left,
+                                width: dropdownPos.width,
+                                zIndex: 9999,
+                              }}
+                              className="flex flex-col gap-1 rounded-xl border border-border bg-bg-card p-1.5 shadow-2xl backdrop-blur-md"
+                            >
+                              {availableDimensionOptions.map((d) => {
+                                const isSelected =
+                                  String(d) === (formDimension || String(DEFAULT_DIMENSION));
+                                return (
+                                  <button
+                                    key={d}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={isSelected}
+                                    onClick={() => {
+                                      setFormDimension(String(d));
+                                      setDimensionDropdownOpen(false);
+                                    }}
+                                    className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-left font-mono text-[13px] transition-all cursor-pointer ${
+                                      isSelected
+                                        ? "bg-accent/10 text-accent font-semibold hover:bg-accent/15"
+                                        : "text-text hover:bg-bg-elevated/70"
+                                    }`}
+                                  >
+                                    <span>{d}</span>
+                                    {isSelected && (
+                                      <Check size={14} className="text-accent shrink-0" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>,
+                            document.body
+                          )}
                       </div>
                     )}
 
