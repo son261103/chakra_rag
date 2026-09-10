@@ -33,6 +33,13 @@ from core.security import decrypt_integration_key
 
 logger = logging.getLogger(__name__)
 
+
+class LLMConfigError(RuntimeError):
+    """Chưa cấu hình tích hợp LLM nào đang active (không fallback env)."""
+
+
+_LLM_NOT_CONFIGURED = "Chưa cấu hình model LLM — thêm tích hợp trong Cài đặt (tab LLM)."
+
 def build_system_prompt(max_agent_turns: int) -> str:
     """System prompt dựng theo ngân sách tool của Config.
 
@@ -257,23 +264,35 @@ class RagAgent:
         self._current_integration_fingerprint: tuple[str, str, str] | None = None
 
     def resolve_active_llm_config(self) -> tuple[str, str, str]:
-        """Lấy (model, base_url, api_key) từ active integration trong DB (hoặc fallback Config)."""
-        if self.integration_repo is not None:
-            active = self.integration_repo.get_active_integration()
-            if active:
-                try:
-                    decrypted_key = decrypt_integration_key(
-                        active.get("encrypted_api_key", ""),
-                        active.get("encrypted_dek", ""),
-                        self.cfg.encryption_key,
-                    )
-                except Exception as exc:
-                    logger.warning("Không thể giải mã API key của active integration: %s", exc)
-                    decrypted_key = ""
-                model = str(active.get("model") or self.cfg.llm_model).strip()
-                base_url = str(active.get("base_url") or self.cfg.llm_base_url).strip()
-                return model, base_url, decrypted_key
-        return self.cfg.llm_model, self.cfg.llm_base_url, self.cfg.llm_api_key
+        """Lấy (model, base_url, api_key) từ active integration trong DB.
+
+        Không có integration nào active → raise LLMConfigError (không fallback
+        env — đúng chuẩn với embedding: bảng trống nghĩa là chưa cấu hình).
+        """
+        active = (
+            self.integration_repo.get_active_integration()
+            if self.integration_repo is not None
+            else None
+        )
+        if not active:
+            raise LLMConfigError(_LLM_NOT_CONFIGURED)
+        try:
+            decrypted_key = decrypt_integration_key(
+                active.get("encrypted_api_key", ""),
+                active.get("encrypted_dek", ""),
+                self.cfg.encryption_key,
+            )
+        except Exception as exc:
+            logger.warning("Không thể giải mã API key của active integration: %s", exc)
+            decrypted_key = ""
+        model = str(active.get("model") or "").strip()
+        base_url = str(active.get("base_url") or "").strip()
+        if not model or not base_url:
+            raise LLMConfigError(
+                "Tích hợp LLM đang active thiếu model/base_url — kiểm tra lại trong "
+                "Cài đặt (tab LLM)."
+            )
+        return model, base_url, decrypted_key
 
     def _make_llm(self) -> ThinkingChatOpenAI:
         model, base_url, api_key = self.resolve_active_llm_config()

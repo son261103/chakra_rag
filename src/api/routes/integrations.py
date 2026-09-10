@@ -61,8 +61,11 @@ def list_integrations(service: Services) -> dict[str, Any]:
 
 @router.get("/integrations/active")
 def get_active_integration(service: Services) -> dict[str, Any]:
-    """Lấy thông tin tích hợp LLM đang được kích hoạt."""
-    return service.integrations.get_active_integration_info()
+    """Lấy thông tin tích hợp LLM đang được kích hoạt — 404 khi chưa cấu hình gì."""
+    active = service.integrations.get_active_integration_info()
+    if active is None:
+        raise HTTPException(404, "Chưa cấu hình tích hợp LLM nào")
+    return active
 
 
 @router.post("/integrations", response_model=IntegrationResponseModel)

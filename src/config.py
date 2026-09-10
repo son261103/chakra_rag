@@ -53,10 +53,9 @@ def build_db_url(
     return f"{driver}://{auth}@{host}:{port}/{database}"
 @dataclass(frozen=True)
 class Config:
-    # LLM (OpenAI-compatible)
-    llm_base_url: str = "https://api.openai.com/v1"
-    llm_api_key: str = ""
-    llm_model: str = "gpt-4o-mini"
+    # LLM: KHÔNG có credential/base_url/model trong env — mọi thứ cấu hình
+    # qua Settings UI (bảng `integrations`). Chỉ giữ tham số vận hành
+    # (retry/timeout) vì chúng là hành vi SDK, không phải định danh provider.
     # Retry gateway/connect flaky (502/5xx/timeout) — openai SDK backoff.
     llm_max_retries: int = 5
     llm_timeout: float = 90.0
@@ -131,9 +130,6 @@ def get_config() -> Config:
             database=db_name,
         )
     cfg = Config(
-        llm_base_url=_env("LLM_BASE_URL", "https://api.openai.com/v1"),
-        llm_api_key=_env("LLM_API_KEY", ""),
-        llm_model=_env("LLM_MODEL", "gpt-4o-mini"),
         llm_max_retries=_env_int("LLM_MAX_RETRIES", 5),
         llm_timeout=_env_float("LLM_TIMEOUT", 90.0),
         embed_dim=_env_int("EMBED_DIM", 1024),

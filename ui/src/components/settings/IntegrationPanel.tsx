@@ -3,8 +3,8 @@
  *
  * kind="embedding" có thêm:
  * - "Nhà cung cấp" (provider dropdown, preset load từ GET /embedding-integrations/
- *   providers — backend là nguồn sự thật), model preset + "Khác…" tự nhập,
- *   chiều vector options theo preset của model + "Khác…".
+ *   providers — backend là nguồn sự thật): model + chiều vector chọn theo preset;
+ *   provider custom / chưa có preset mới hiện ô nhập tay, không có mục "Khác…".
  * - "Dùng Batch API (−50%)" — chỉ hiện khi provider hỗ trợ batch.
  * - Luồng xác nhận đổi chiều: backend trả 409 dimension_mismatch → dialog xác
  *   nhận → gửi lại force=true (server reset index, mọi file chuyển "cần nạp lại").
@@ -67,11 +67,7 @@ interface Props {
   onChanged?: () => void;
 }
 
-const KIND_DEFAULTS: Record<IntegrationKind, { baseUrl: string; model: string; label: string }> = {
-  llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", label: "LLM" },
-  // Embedding: KHÔNG prefill giá trị — form bắt đầu trống, string chỉ là placeholder.
-  embedding: { baseUrl: "https://api.mistral.ai/v1", model: "mistral-embed", label: "Embedding" },
-};
+const KIND_LABELS: Record<IntegrationKind, string> = { llm: "LLM", embedding: "Embedding" };
 
 /** Dự phòng khi GET /providers lỗi (mạng/API) — vẫn chọn được provider, nhập tay phần còn lại. */
 const FALLBACK_PROVIDERS: EmbeddingProviderSpec[] = [
@@ -101,11 +97,10 @@ function confirmDimensionReset(detail: DimensionMismatchDetail): boolean {
   );
 }
 
-const DIMENSION_OPTIONS = [256, 512, 768, 1024, 1536, 3072];
 const DEFAULT_DIMENSION = 1024;
 
 export default function IntegrationPanel({ kind, onChanged }: Props) {
-  const defaults = KIND_DEFAULTS[kind];
+  const kindLabel = KIND_LABELS[kind];
   const isEmbedding = kind === "embedding";
 
   const [integrations, setIntegrations] = useState<Entry[]>([]);
@@ -119,10 +114,9 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
   const [formName, setFormName] = useState("");
   const [formProvider, setFormProvider] = useState("openai");
   const [formUseBatch, setFormUseBatch] = useState(false);
-  // Tab LLM giữ behavior prefill cũ; tab Embedding: base URL/model trống (placeholder
-  // là hint), chiều mặc định 1024 (dropdown) — đổi qua giao diện chọn chiều.
-  const [formBaseUrl, setFormBaseUrl] = useState(kind === "llm" ? defaults.baseUrl : "");
-  const [formModel, setFormModel] = useState(kind === "llm" ? defaults.model : "");
+  // Cả 2 tab đều KHÔNG prefill giá trị — form bắt đầu trống, string chỉ là placeholder.
+  const [formBaseUrl, setFormBaseUrl] = useState("");
+  const [formModel, setFormModel] = useState("");
   const [formDimension, setFormDimension] = useState(
     kind === "llm" ? "" : String(DEFAULT_DIMENSION)
   );
@@ -134,9 +128,6 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   // Provider spec list (chỉ embedding) — render dropdown provider/model/chiều từ đây.
   const [providers, setProviders] = useState<EmbeddingProviderSpec[]>([]);
-  // Chế độ tự nhập (không dùng preset) cho model / chiều vector.
-  const [formModelCustom, setFormModelCustom] = useState(false);
-  const [formDimensionCustom, setFormDimensionCustom] = useState(false);
   // Dropdown portal tổng quát: 1 menu mở tại một thời điểm.
   const [openMenu, setOpenMenu] = useState<MenuField | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(
@@ -154,18 +145,24 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
   const providerDisplayName = (id: string) =>
     providerList.find((p) => p.id === id)?.display_name ?? id;
 
+  // Provider này có preset model trên backend không? Không có (custom / lỗi spec)
+  // → model + chiều vector là ô nhập tay; có preset → dropdown chọn.
+  const hasModelPresets = (activeProviderSpec?.models.length ?? 0) > 0;
+
   // Options chiều vector: theo preset của model đang chọn (dims backend khai báo);
-  // model tự nhập / provider custom → danh sách phổ thông. Giá trị hiện tại ngoài
-  // danh sách (vd cấu hình cũ 384 MiniLM) vẫn được giữ hiển thị.
+  // model chưa chọn → gomdims của mọi model preset. Giá trị hiện tại ngoài danh
+  // sách (vd cấu hình cũ 384 MiniLM) vẫn được giữ hiển thị.
   const availableDimensionOptions = useMemo(() => {
     if (!isEmbedding) return [];
-    const base = activeModelPreset ? [...activeModelPreset.dimensions] : [...DIMENSION_OPTIONS];
+    const base = activeModelPreset
+      ? [...activeModelPreset.dimensions]
+      : [...new Set((activeProviderSpec?.models ?? []).flatMap((m) => m.dimensions))];
     const custom = parseInt(formDimension, 10);
     if (custom > 0 && !base.includes(custom)) {
       base.push(custom);
     }
     return [...new Set(base)].sort((a, b) => a - b);
-  }, [isEmbedding, activeModelPreset, formDimension]);
+  }, [isEmbedding, activeModelPreset, activeProviderSpec, formDimension]);
 
   const fetchIntegrations = useCallback(async () => {
     setLoading(true);
@@ -284,9 +281,6 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
     setFormBaseUrl(item.base_url);
     setFormModel(item.model);
     if (isEmbedding) setFormDimension(String((item as EmbeddingIntegrationEntry).dimension ?? ""));
-    // Cấu hình cũ có thể dùng model/chiều ngoài preset — mở sẵn chế độ tự nhập đúng giá trị đó.
-    setFormModelCustom(false);
-    setFormDimensionCustom(false);
     setFormApiKey("");
     setFormIsActive(item.is_active);
     setShowApiKey(false);
@@ -301,11 +295,9 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
     setFormName("");
     setFormProvider("openai");
     setFormUseBatch(false);
-    setFormBaseUrl(kind === "llm" ? defaults.baseUrl : "");
-    setFormModel(kind === "llm" ? defaults.model : "");
+    setFormBaseUrl("");
+    setFormModel("");
     setFormDimension(kind === "llm" ? "" : String(DEFAULT_DIMENSION));
-    setFormModelCustom(false);
-    setFormDimensionCustom(false);
     setFormApiKey("");
     setFormIsActive(integrations.length === 0);
     setShowApiKey(false);
@@ -324,14 +316,11 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
     const firstModel = spec?.models[0];
     if (firstModel) {
       setFormModel(firstModel.name);
-      setFormModelCustom(false);
       setFormDimension(String(firstModel.dimensions[firstModel.dimensions.length - 1]));
-      setFormDimensionCustom(false);
     } else {
+      // Custom / chưa có preset → user nhập tay model, chiều về mặc định.
       setFormModel("");
-      setFormModelCustom(true);
       setFormDimension(String(DEFAULT_DIMENSION));
-      setFormDimensionCustom(false);
     }
   };
 
@@ -339,11 +328,9 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
   const handleModelSelect = (name: string) => {
     setFormModel(name);
     setOpenMenu(null);
-    setFormModelCustom(false);
     const preset = activeProviderSpec?.models.find((m) => m.name === name);
     if (preset && preset.dimensions.length > 0) {
       setFormDimension(String(preset.dimensions[preset.dimensions.length - 1]));
-      setFormDimensionCustom(false);
     }
   };
 
@@ -355,7 +342,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
       else await activateIntegration(id);
       await fetchIntegrations();
       setDetailItem((prev) => (prev && prev.id === id ? { ...prev, is_active: true } : prev));
-      notify.success(`Đã kích hoạt cấu hình ${defaults.label}`);
+      notify.success(`Đã kích hoạt cấu hình ${kindLabel}`);
       onChanged?.();
     } catch (e) {
       if (!force && isDimensionConflict(e) && confirmDimensionReset(e.detail)) {
@@ -407,6 +394,10 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
       setTestResult({ ok: false, msg: "Vui lòng nhập Chiều vector hợp lệ (> 0)." });
       return;
     }
+    if (!isEmbedding && !formBaseUrl.trim()) {
+      setTestResult({ ok: false, msg: "Vui lòng nhập Base URL trước khi kiểm tra." });
+      return;
+    }
     setTesting(true);
     setTestResult(null);
     try {
@@ -430,7 +421,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
       } else {
         const res = await testIntegration({
           model: formModel.trim(),
-          base_url: formBaseUrl.trim() || defaults.baseUrl,
+          base_url: formBaseUrl.trim(),
           api_key: formApiKey.trim() || undefined,
           integration_id: editingId || undefined,
         });
@@ -520,7 +511,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
         }
         await fetchIntegrations();
         closeModal();
-        notify.success(`Đã thêm cấu hình ${defaults.label} mới`);
+        notify.success(`Đã thêm cấu hình ${kindLabel} mới`);
       }
       onChanged?.();
     } catch (err) {
@@ -550,8 +541,8 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
               type="button"
               onClick={openCreateModal}
               className="group flex size-6 items-center justify-center rounded-md bg-accent text-accent-contrast transition-all cursor-pointer shadow-xs active:scale-95"
-              title={`Thêm cấu hình ${defaults.label} mới`}
-              aria-label={`Thêm cấu hình ${defaults.label} mới`}
+              title={`Thêm cấu hình ${kindLabel} mới`}
+              aria-label={`Thêm cấu hình ${kindLabel} mới`}
             >
               <Plus
                 size={13}
@@ -662,7 +653,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
             >
               <div className="text-[13px] font-medium text-text">Chưa có cấu hình nào</div>
               <div className="text-[11.5px] text-muted">
-                Bấm vào đây hoặc nút <span className="font-bold text-accent">+</span> ở góc trên để thiết lập {defaults.label}
+                Bấm vào đây hoặc nút <span className="font-bold text-accent">+</span> ở góc trên để thiết lập {kindLabel}
               </div>
             </div>
           )}
@@ -676,8 +667,8 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                 </>
               ) : (
                 <>
-                  Chưa kích hoạt cấu hình nào — hệ thống đang dùng model mặc định từ{" "}
-                  <code>.env</code>.
+                  Chưa kích hoạt cấu hình LLM nào — chat sẽ báo lỗi{" "}
+                  <em>“Chưa cấu hình model LLM”</em> cho tới khi bạn chọn một cấu hình.
                 </>
               )}
             </div>
@@ -693,7 +684,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
             <div
               className="relative z-10 w-full max-w-[580px] rounded-2xl border border-border bg-bg-card shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
               role="dialog"
-              aria-label={`Cấu hình tích hợp ${defaults.label}`}
+              aria-label={`Cấu hình tích hợp ${kindLabel}`}
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between border-b border-border/70 p-5 shrink-0">
@@ -717,7 +708,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                     </h4>
                     <p className="text-[12px] text-muted truncate">
                       {modalMode === "view"
-                        ? detailItem?.name || `Thông tin kết nối ${defaults.label}`
+                        ? detailItem?.name || `Thông tin kết nối ${kindLabel}`
                         : modalMode === "edit"
                           ? `Đang sửa: ${detailItem?.name || ""}`
                           : "Kết nối model qua endpoint OpenAI-compatible"}
@@ -868,7 +859,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                   </div>
                 ) : (
                   <>
-                  /* ================= EDIT / CREATE FORM ================= */
+                  {/* ================= EDIT / CREATE FORM ================= */}
                   <form
                     id={`integration-form-${kind}`}
                     onSubmit={(e) => handleSave(e)}
@@ -901,7 +892,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                       <input
                         type="url"
                         required
-                        placeholder={defaults.baseUrl}
+                        placeholder="https://api.openai.com/v1"
                         value={formBaseUrl}
                         onChange={(e) => setFormBaseUrl(e.target.value)}
                         className="rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[12.5px] text-text placeholder:text-muted focus:border-accent"
@@ -942,16 +933,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                           <label className="text-[12px] font-semibold text-muted">
                             Tên Model *
                           </label>
-                          {formModelCustom ? (
-                            <input
-                              type="text"
-                              required
-                              placeholder="vd: my-embedding-model"
-                              value={formModel}
-                              onChange={(e) => setFormModel(e.target.value)}
-                              className="rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[12.5px] text-text placeholder:text-muted focus:border-accent"
-                            />
-                          ) : (
+                          {hasModelPresets ? (
                             <button
                               ref={(el) => {
                                 triggerRefs.current["model"] = el;
@@ -970,6 +952,15 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                                 }`}
                               />
                             </button>
+                          ) : (
+                            <input
+                              type="text"
+                              required
+                              placeholder="vd: my-embedding-model"
+                              value={formModel}
+                              onChange={(e) => setFormModel(e.target.value)}
+                              className="rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[12.5px] text-text placeholder:text-muted focus:border-accent"
+                            />
                           )}
                         </div>
                       </>
@@ -992,24 +983,14 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                       </div>
                     )}
 
-                    {/* Chiều vector — chỉ embedding */}
+                    {/* Chiều vector — chỉ embedding: preset có model → dropdown;
+                        custom/không preset → ô nhập tay. */}
                     {isEmbedding && (
                       <div className="flex flex-col gap-1.5">
                         <label className="text-[12px] font-semibold text-muted">
                           Chiều vector *
                         </label>
-                        {formDimensionCustom ? (
-                          <input
-                            type="number"
-                            min={1}
-                            max={16384}
-                            required
-                            placeholder="vd: 1024"
-                            value={formDimension}
-                            onChange={(e) => setFormDimension(e.target.value)}
-                            className="rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[12.5px] text-text placeholder:text-muted focus:border-accent"
-                          />
-                        ) : (
+                        {hasModelPresets ? (
                           <button
                             ref={(el) => {
                               triggerRefs.current["dimension"] = el;
@@ -1028,6 +1009,17 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                               }`}
                             />
                           </button>
+                        ) : (
+                          <input
+                            type="number"
+                            min={1}
+                            max={16384}
+                            required
+                            placeholder="vd: 1024"
+                            value={formDimension}
+                            onChange={(e) => setFormDimension(e.target.value)}
+                            className="rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[12.5px] text-text placeholder:text-muted focus:border-accent"
+                          />
                         )}
                       </div>
                     )}
@@ -1053,9 +1045,6 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                             <span className="ml-1 rounded-full bg-accent/10 border border-accent/30 px-2 py-0.5 text-[10.5px] font-semibold text-accent">
                               −50% chi phí
                             </span>
-                          </span>
-                          <span className="text-[11.5px] text-muted">
-                            Nạp tài liệu qua batch bất đồng bộ — hoàn thành trong 24h
                           </span>
                         </div>
                         <div
@@ -1244,24 +1233,6 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                               Provider này không có preset — hãy nhập tên model ở ô trên.
                             </div>
                           ))}
-                        {openMenu === "model" && (
-                          <button
-                            type="button"
-                            role="option"
-                            aria-selected={formModelCustom}
-                            onClick={() => {
-                              setFormModelCustom(true);
-                              setOpenMenu(null);
-                            }}
-                            className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] transition-all cursor-pointer ${
-                              formModelCustom
-                                ? "bg-accent/10 text-accent font-semibold hover:bg-accent/15"
-                                : "text-text hover:bg-bg-elevated/70"
-                            }`}
-                          >
-                            <span>Khác… (tự nhập)</span>
-                          </button>
-                        )}
                         {openMenu === "dimension" &&
                           availableDimensionOptions.map((d) => {
                             const isSelected =
@@ -1274,7 +1245,6 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                                 aria-selected={isSelected}
                                 onClick={() => {
                                   setFormDimension(String(d));
-                                  setFormDimensionCustom(false);
                                   setOpenMenu(null);
                                 }}
                                 className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-left font-mono text-[13px] transition-all cursor-pointer ${
@@ -1290,24 +1260,6 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                               </button>
                             );
                           })}
-                        {openMenu === "dimension" && (
-                          <button
-                            type="button"
-                            role="option"
-                            aria-selected={formDimensionCustom}
-                            onClick={() => {
-                              setFormDimensionCustom(true);
-                              setOpenMenu(null);
-                            }}
-                            className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] transition-all cursor-pointer ${
-                              formDimensionCustom
-                                ? "bg-accent/10 text-accent font-semibold hover:bg-accent/15"
-                                : "text-text hover:bg-bg-elevated/70"
-                            }`}
-                          >
-                            <span>Khác… (tự nhập)</span>
-                          </button>
-                        )}
                       </div>,
                       document.body
                     )}

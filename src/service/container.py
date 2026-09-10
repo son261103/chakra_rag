@@ -54,11 +54,11 @@ class ServiceContainer:
         self.embedding_integration_repo = EmbeddingIntegrationRepository(self.db)
         self.worker = worker
 
-        # 1. Integration Service (quản lý model & API key)
+        # 1. Integration Service (quản lý model & API key). KHÔNG seed mặc định,
+        #    KHÔNG fallback env — user tự thêm integration trong Settings (tab LLM).
         self.integrations = IntegrationService(
             self.integration_repo, self.cfg, on_change=self.reload_agent
         )
-        self.integrations.ensure_default_integration()
 
         # 2. Embedding: client API (resolve integration active mỗi lần gọi) + service
         #    quản lý chiều vector của index. KHÔNG seed mặc định, KHÔNG fallback env —

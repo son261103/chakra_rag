@@ -1,11 +1,14 @@
 """Service quản lý các cấu hình tích hợp LLM (OpenAI-compatible).
 
 Đảm nhiệm:
-- Khởi tạo tích hợp mặc định nếu DB trống
 - Quản lý danh sách tích hợp (mã hóa DEK/KEK và che API key)
 - Lấy thông tin tích hợp đang kích hoạt
 - Thêm / sửa / xóa / kích hoạt tích hợp
 - Kiểm tra kết nối tới LLM provider
+
+Không seed mặc định, không fallback env — bảng trống nghĩa là chưa cấu hình
+(giống embedding_integrations): chat sẽ báo lỗi rõ ràng cho tới khi user thêm
+tích hợp trong Settings (tab LLM).
 """
 
 from __future__ import annotations
@@ -34,26 +37,6 @@ class IntegrationService:
         self.repo = repo
         self.cfg = cfg or get_config()
         self.on_change = on_change
-
-    def ensure_default_integration(self) -> None:
-        """Nếu DB chưa có tích hợp nào, khởi tạo cấu hình mặc định vào database."""
-        try:
-            if self.repo.count_integrations() == 0:
-                model_name = self.cfg.llm_model or "gpt-4o-mini"
-                base_url = self.cfg.llm_base_url or "https://api.openai.com/v1"
-                enc = encrypt_integration_key(self.cfg.llm_api_key, self.cfg.encryption_key)
-                self.repo.create_integration(
-                    name="OpenAI (Mặc định)",
-                    model=model_name,
-                    base_url=base_url,
-                    provider="openai",
-                    encrypted_api_key=enc.encrypted_api_key,
-                    encrypted_dek=enc.encrypted_dek,
-                    is_active=True,
-                )
-                logger.info("Đã khởi tạo tích hợp LLM mặc định vào database.")
-        except Exception:
-            logger.exception("Lỗi khi tạo tích hợp mặc định (bỏ qua)")
 
     def format_item(self, item: dict[str, Any]) -> dict[str, Any]:
         """Format 1 record từ DB ra payload an toàn (giải mã rồi che API key)."""
@@ -84,20 +67,10 @@ class IntegrationService:
         rows = self.repo.list_integrations()
         return [self.format_item(r) for r in rows]
 
-    def get_active_integration_info(self) -> dict[str, Any]:
+    def get_active_integration_info(self) -> dict[str, Any] | None:
+        """Thông tin tích hợp đang kích hoạt — None khi chưa cấu hình (không fallback env)."""
         active = self.repo.get_active_integration()
-        if not active:
-            return {
-                "id": "env-fallback",
-                "name": "Môi trường (.env)",
-                "provider": "openai",
-                "base_url": self.cfg.llm_base_url,
-                "model": self.cfg.llm_model,
-                "masked_api_key": mask_api_key(self.cfg.llm_api_key),
-                "has_api_key": bool(self.cfg.llm_api_key),
-                "is_active": True,
-            }
-        return self.format_item(active)
+        return self.format_item(active) if active else None
 
     def create_integration(
         self,

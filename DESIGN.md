@@ -309,7 +309,7 @@ chakra_rag/
 ├── DESIGN.md                 # file này
 ├── requirements.txt          # langchain-core/openai/text-splitters, langgraph, pgvector, psycopg,
 │                             # openai, fastapi, uvicorn, numpy (pin version)
-├── .env.example              # LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, DB_URL...
+├── .env.example              # ENCRYPTION_KEY, DB, EMBED_DIM, LOG_LEVEL... (không credential LLM/embedding)
 ├── data/uploads/             # file người dùng upload qua UI
 ├── logs/                    # logs ứng dụng
 ├── src/                         # kiến trúc phân tầng, đặt trực tiếp dưới src/

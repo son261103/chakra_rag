@@ -71,6 +71,28 @@ def test_ask_works_when_index_empty(client):
     assert r.json()["low_confidence"] is True
 
 
+def test_ask_returns_503_when_llm_not_configured(client):
+    """Chưa cấu hình LLM integration nào → 503 tường minh (không fallback env)."""
+    from agent.agent import LLMConfigError
+
+    client.service.chat.ask.side_effect = LLMConfigError("Chưa cấu hình model LLM")
+    r = client.post("/ask", json={"question": "hi?"})
+    assert r.status_code == 503
+    assert "Chưa cấu hình model LLM" in r.json()["detail"]
+
+
+def test_ask_stream_returns_503_when_llm_not_configured(client):
+    """Guard chạy TRƯỚC khi mở SSE — lỗi config là HTTP status, không nằm trong stream."""
+    from agent.agent import LLMConfigError
+
+    client.service.agent.resolve_active_llm_config.side_effect = LLMConfigError(
+        "Chưa cấu hình model LLM"
+    )
+    r = client.post("/ask/stream", json={"question": "hi?"})
+    assert r.status_code == 503
+    assert "Chưa cấu hình model LLM" in r.json()["detail"]
+
+
 def test_conversations_roundtrip(client):
     r = client.post("/conversations", json={"title": "abc"})
     assert r.status_code == 200
