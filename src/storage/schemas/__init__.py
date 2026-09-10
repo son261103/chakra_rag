@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from storage.schemas.chunks import CHUNKS_SCHEMA
 from storage.schemas.conversations import CONVERSATIONS_SCHEMA
-from storage.schemas.embedding_integrations import EMBEDDING_INTEGRATIONS_SCHEMA
-from storage.schemas.files import FILES_SCHEMA
+from storage.schemas.embedding_integrations import (
+    EMBEDDING_INTEGRATIONS_MIGRATIONS,
+    EMBEDDING_INTEGRATIONS_SCHEMA,
+)
+from storage.schemas.files import FILES_MIGRATIONS, FILES_SCHEMA
 from storage.schemas.integrations import INTEGRATIONS_SCHEMA
 from storage.schemas.messages import MESSAGES_SCHEMA
 
@@ -29,6 +32,13 @@ NONCHUNKS_SCHEMAS: list[str] = [
     EMBEDDING_INTEGRATIONS_SCHEMA,
 ]
 
+# Migration cộng dồn cho DB tạo từ phiên bản cũ (chạy sau toàn bộ CREATE TABLE,
+# ADD COLUMN IF NOT EXISTS nên chạy lại vô hại).
+SCHEMA_MIGRATIONS: list[str] = [
+    FILES_MIGRATIONS,
+    EMBEDDING_INTEGRATIONS_MIGRATIONS,
+]
+
 __all__ = [
     "CHUNKS_SCHEMA",
     "FILES_SCHEMA",
@@ -38,4 +48,5 @@ __all__ = [
     "EMBEDDING_INTEGRATIONS_SCHEMA",
     "TABLE_SCHEMAS",
     "NONCHUNKS_SCHEMAS",
+    "SCHEMA_MIGRATIONS",
 ]

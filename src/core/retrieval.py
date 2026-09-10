@@ -63,7 +63,9 @@ class Retriever:
     @traceable(run_type="retriever", name="retrieve_docs")
     def search(self, query: str, top_k: int | None = None) -> RetrievalResult:
         top_k = top_k or self.top_k
-        query_vec = self.embedder.embed_one(query)
+        # input_kind="query": provider có tham số riêng (Jina task=retrieval.query)
+        # sẽ nhúng đúng ngữ nghĩa tìm kiếm — nhà khác bỏ qua.
+        query_vec = self.embedder.embed_one(query, input_kind="query")
 
         vector_hits = self.chunk_repo.vector_search(query_vec, top_k * 2)
         ranked_lists = [vector_hits]

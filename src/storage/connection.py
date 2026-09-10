@@ -22,6 +22,7 @@ from sqlalchemy import create_engine, text
 
 from config import build_db_url, get_config
 from storage.schema import SCHEMA, SCHEMA_NO_CHUNKS
+from storage.schemas import SCHEMA_MIGRATIONS
 
 
 def _normalize_db_url(url: str) -> str:
@@ -111,6 +112,9 @@ class Database:
                 ).scalar()
                 embed_dim = int(dim_row) if dim_row else get_config().embed_dim
             conn.execute(text(SCHEMA.format(dim=embed_dim)))
+            # Migration cộng dồn cho DB phiên bản cũ (ADD COLUMN IF NOT EXISTS).
+            for migration in SCHEMA_MIGRATIONS:
+                conn.execute(text(migration))
 
     def close(self) -> None:
         if self.is_test_schema and self.schema_name:

@@ -1,9 +1,13 @@
-"""Service quản lý cấu hình tích hợp embedding (API OpenAI-compatible /embeddings).
+"""Service quản lý cấu hình tích hợp embedding (provider adapter + Batch API).
 
 Mirror `integration_service.py` (LLM) — nhưng KHÔNG seed tích hợp mặc định và
 KHÔNG có fallback env: người dùng phải tự thêm integration trong Settings UI.
-Hai đặc thù embedding:
+Ba đặc thù embedding:
+- `provider`: id trong registry `core/providers` (openai/mistral/jina/ollama/custom)
+  — quyết định adapter client + capability (batch, tham số chiều).
 - `dimension`: số chiều vector khai báo cho provider.
+- `use_batch`: bật Batch API giảm 50% giá khi nạp tài liệu — chỉ bật được khi
+  provider hỗ trợ (`supports_batch`), vi phạm → ValueError (route → 422).
 - Đổi chiều = index cũ không dùng được: khi activate/update config có chiều khác
   chiều cột `chunks.embedding` hiện tại → nếu còn chunk thì raise
   `EmbeddingDimensionConflict` (route trả 409, UI xác nhận, gửi lại force=true);
@@ -18,6 +22,7 @@ from collections.abc import Callable
 from typing import Any
 
 from config import Config, get_config
+from core.providers import get_provider
 from core.security import decrypt_integration_key, encrypt_integration_key, mask_api_key
 from observability.timing import elapsed_ms, timed
 from repositories import ChunkRepository, EmbeddingIntegrationRepository, FileRepository
@@ -75,6 +80,7 @@ class EmbeddingIntegrationService:
             "base_url": item["base_url"],
             "model": item["model"],
             "dimension": int(item["dimension"]),
+            "use_batch": bool(item.get("use_batch", 0)),
             "masked_api_key": mask_api_key(raw_key),
             "has_api_key": bool(raw_key),
             "is_active": bool(item.get("is_active", 0)),
@@ -149,17 +155,31 @@ class EmbeddingIntegrationService:
 
     # ---------- CRUD ----------
 
+    @staticmethod
+    def _check_use_batch(provider: str, use_batch: bool) -> None:
+        """use_batch chỉ bật được khi provider có Batch API — vi phạm là lỗi tường minh."""
+        if not use_batch:
+            return
+        spec = get_provider(provider)  # provider lạ → ValueError (route → 422)
+        if not spec.supports_batch:
+            raise ValueError(
+                f"Provider '{spec.display_name}' không hỗ trợ Batch API — "
+                "không thể bật 'Dùng Batch API'."
+            )
+
     def create_integration(
         self,
         name: str,
         model: str,
         dimension: int,
         base_url: str,
-        provider: str = "openai",
+        provider: str = "custom",
         api_key: str = "",
         is_active: bool = False,
+        use_batch: bool = False,
         force: bool = False,
     ) -> dict[str, Any]:
+        self._check_use_batch(provider, use_batch)
         will_be_active = is_active or self.repo.count_integrations() == 0
         if will_be_active:
             self._check_dimension(int(dimension), force)
@@ -173,6 +193,7 @@ class EmbeddingIntegrationService:
             encrypted_api_key=enc.encrypted_api_key,
             encrypted_dek=enc.encrypted_dek,
             is_active=is_active,
+            use_batch=use_batch,
         )
         if self.on_change:
             self.on_change()
@@ -188,11 +209,18 @@ class EmbeddingIntegrationService:
         provider: str | None = None,
         api_key: str | None = None,
         is_active: bool | None = None,
+        use_batch: bool | None = None,
         force: bool = False,
     ) -> dict[str, Any] | None:
         row = self.repo.get_integration(integration_id)
         if row is None:
             return None
+        # Validate theo giá trị SAU khi cập nhật (thiếu trường nào thì lấy của row cũ).
+        effective_provider = provider if provider is not None else str(row.get("provider", ""))
+        effective_use_batch = (
+            use_batch if use_batch is not None else bool(row.get("use_batch", 0))
+        )
+        self._check_use_batch(effective_provider, effective_use_batch)
         # Chỉ kiểm chiều khi row này đang/sẽ là active (thay đổi có ảnh hưởng index).
         still_active = is_active is not False and bool(row.get("is_active"))
         is_or_will_be_active = bool(is_active) or still_active
@@ -216,6 +244,7 @@ class EmbeddingIntegrationService:
             encrypted_api_key=enc_key,
             encrypted_dek=enc_dek,
             is_active=is_active,
+            use_batch=use_batch,
         )
         if not updated:
             return None
@@ -261,12 +290,14 @@ class EmbeddingIntegrationService:
         self,
         model: str,
         base_url: str,
+        provider: str = "custom",
         dimension: int | None = None,
         api_key: str | None = None,
         integration_id: str | None = None,
     ) -> dict[str, Any]:
         """Gọi thật /embeddings với 1 text ngắn — trả chiều thực tế để bắt lỗi khai sai chiều."""
-        from langchain_openai import OpenAIEmbeddings
+        from core.providers import get_adapter
+        from core.providers.base import EmbeddingConfig
 
         resolved_key = api_key
         if not resolved_key and integration_id:
@@ -278,16 +309,18 @@ class EmbeddingIntegrationService:
                     self.cfg.encryption_key,
                 )
 
-        start = timed()
-        embeddings = OpenAIEmbeddings(
+        adapter = get_adapter(provider)  # provider lạ → ValueError (route → 422/400)
+        cfg = EmbeddingConfig(
+            integration_id="",
+            provider=adapter.spec.id,
+            base_url=base_url.strip(),
+            api_key=resolved_key.strip() if resolved_key else "",
             model=model.strip(),
-            openai_api_key=resolved_key.strip() if resolved_key else "not-needed",
-            openai_api_base=base_url.strip(),
-            check_embedding_ctx_length=False,
-            timeout=min(self.cfg.llm_timeout, 20.0),
-            max_retries=1,
+            dimension=0,  # test không validate chiều — chiều thực tế trả về cho UI so
         )
-        vectors = embeddings.embed_documents(["Hi"])
+        start = timed()
+        client = adapter.build_client(cfg, timeout=min(self.cfg.llm_timeout, 20.0))
+        vectors = adapter.sync_embed(client, cfg, ["Hi"], "query")
         ms = elapsed_ms(start)
         actual_dim = len(vectors[0]) if vectors else 0
         result: dict[str, Any] = {

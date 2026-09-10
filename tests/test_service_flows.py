@@ -28,7 +28,7 @@ def service(tmp_path, monkeypatch):
 
     fake_embedder = MagicMock(return_value=None)
     fake_embedder.dim = 4
-    fake_embedder.embed_one = lambda t: [0.0] * 4
+    fake_embedder.embed_one = lambda t, input_kind="passage": [0.0] * 4
     monkeypatch.setattr(rs, "Embedder", MagicMock(return_value=fake_embedder))
     cfg = Config(db_path=tmp_path / "s.db", uploads_dir=tmp_path, logs_dir=tmp_path / "logs")
     svc = rs.ServiceContainer(cfg)

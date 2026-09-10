@@ -1,7 +1,10 @@
-"""Endpoints quản lý tích hợp embedding (API OpenAI-compatible /embeddings).
+"""Endpoints quản lý tích hợp embedding (provider adapter + Batch API).
 
 Mirror `integrations.py` (LLM), thêm:
+- `provider`: id trong registry `core/providers` — Literal validation (422 khi lạ).
+- `use_batch`: bật Batch API khi nạp tài liệu (chỉ provider supports_batch).
 - `dimension` (số chiều vector) trong payload create/update/response.
+- GET /providers: danh sách provider spec cho UI render form (preset model + chiều).
 - Flow đổi chiều: nếu chiều mới khác chiều index hiện tại và index còn chunk →
   409 `{error: "dimension_mismatch", current_dimension, new_dimension}`;
   client xác nhận với user rồi gửi lại kèm `force=true` → server reset index.
@@ -10,17 +13,20 @@ Mirror `integrations.py` (LLM), thêm:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from api.deps import Services
+from core.providers import list_provider_specs
 from service.embedding_integration_service import EmbeddingDimensionConflict
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["embedding-integrations"])
+
+ProviderId = Literal["openai", "mistral", "jina", "ollama", "custom"]
 
 
 def _conflict_http(exc: EmbeddingDimensionConflict) -> HTTPException:
@@ -35,13 +41,19 @@ def _conflict_http(exc: EmbeddingDimensionConflict) -> HTTPException:
     )
 
 
+def _value_http(exc: ValueError) -> HTTPException:
+    """Provider lạ / use_batch sai capability → 422 với thông báo rõ."""
+    return HTTPException(status_code=422, detail=str(exc))
+
+
 class EmbeddingIntegrationResponseModel(BaseModel):
     id: str
     name: str
-    provider: str = "openai"
+    provider: str = "custom"
     base_url: str
     model: str
     dimension: int
+    use_batch: bool = False
     masked_api_key: str
     has_api_key: bool
     is_active: bool
@@ -51,32 +63,61 @@ class EmbeddingIntegrationResponseModel(BaseModel):
 
 class CreateEmbeddingIntegrationRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    provider: str = Field(default="openai")
+    provider: ProviderId = Field(default="custom")
     base_url: str = Field(min_length=1)
     model: str = Field(min_length=1)
     dimension: int = Field(gt=0, le=16384)
     api_key: str = Field(default="")
+    use_batch: bool = Field(default=False)
     is_active: bool = Field(default=False)
     force: bool = Field(default=False)
 
 
 class UpdateEmbeddingIntegrationRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
-    provider: str | None = None
+    provider: ProviderId | None = None
     base_url: str | None = None
     model: str | None = Field(default=None, min_length=1)
     dimension: int | None = Field(default=None, gt=0, le=16384)
     api_key: str | None = None
+    use_batch: bool | None = None
     is_active: bool | None = None
     force: bool = Field(default=False)
 
 
 class TestEmbeddingIntegrationRequest(BaseModel):
+    provider: ProviderId = Field(default="custom")
     model: str = Field(min_length=1)
     base_url: str = Field(min_length=1)
     dimension: int | None = Field(default=None, gt=0)
     api_key: str | None = None
     integration_id: str | None = None
+
+
+class ProviderModelPresetModel(BaseModel):
+    name: str
+    dimensions: list[int]
+
+
+class ProviderSpecModel(BaseModel):
+    id: str
+    display_name: str
+    default_base_url: str
+    requires_api_key: bool
+    supports_batch: bool
+    batch_limit: int | None
+    models: list[ProviderModelPresetModel]
+
+
+@router.get("/embedding-integrations/providers")
+def list_embedding_providers() -> dict[str, Any]:
+    """Danh sách provider embedding + preset model/chiều — UI render form từ đây."""
+    return {
+        "providers": [
+            ProviderSpecModel(**spec.to_public_dict()).model_dump()
+            for spec in list_provider_specs()
+        ]
+    }
 
 
 @router.get("/embedding-integrations")
@@ -104,17 +145,22 @@ def create_embedding_integration(
             base_url=req.base_url,
             provider=req.provider,
             api_key=req.api_key,
+            use_batch=req.use_batch,
             is_active=req.is_active,
             force=req.force,
         )
     except EmbeddingDimensionConflict as exc:
         raise _conflict_http(exc) from exc
+    except ValueError as exc:
+        raise _value_http(exc) from exc
     logger.info(
-        "Tạo tích hợp embedding mới id=%s name=%r model=%r dim=%d",
+        "Tạo tích hợp embedding mới id=%s name=%r provider=%s model=%r dim=%d use_batch=%s",
         created["id"],
         req.name,
+        req.provider,
         req.model,
         req.dimension,
+        req.use_batch,
     )
     return created
 
@@ -138,11 +184,14 @@ def update_embedding_integration(
             base_url=req.base_url,
             provider=req.provider,
             api_key=req.api_key,
+            use_batch=req.use_batch,
             is_active=req.is_active,
             force=req.force,
         )
     except EmbeddingDimensionConflict as exc:
         raise _conflict_http(exc) from exc
+    except ValueError as exc:
+        raise _value_http(exc) from exc
     if not updated:
         raise HTTPException(404, "Không tìm thấy cấu hình tích hợp embedding")
     logger.info(
@@ -207,12 +256,15 @@ def test_embedding_integration(
     """Kiểm tra kết nối tới embedding provider — embed thử 1 text, trả chiều thực tế."""
     try:
         return service.embedding_integrations.test_connection(
+            provider=req.provider,
             model=req.model,
             base_url=req.base_url,
             dimension=req.dimension,
             api_key=req.api_key,
             integration_id=req.integration_id,
         )
+    except ValueError as exc:
+        raise _value_http(exc) from exc
     except Exception as exc:
         logger.warning("Test kết nối embedding thất bại: %s", exc)
         raise HTTPException(400, f"Kiểm tra kết nối thất bại: {exc}") from exc

@@ -7,6 +7,7 @@ import type {
   CreateEmbeddingIntegrationPayload,
   CreateIntegrationPayload,
   EmbeddingIntegrationEntry,
+  EmbeddingProviderSpec,
   FileChunksResponse,
   FileEntry,
   IngestProgress,
@@ -299,6 +300,15 @@ export async function testIntegration(payload: TestIntegrationPayload): Promise<
 }
 
 /** Quản lý tích hợp Embedding (API + chiều vector). force=true = xác nhận reset index khi đổi chiều. */
+
+/** Danh sách provider embedding + preset model/chiều — backend là nguồn sự thật. */
+export async function listEmbeddingProviders(): Promise<EmbeddingProviderSpec[]> {
+  const data = await handle<{ providers: EmbeddingProviderSpec[] }>(
+    await fetch(`${BASE}/embedding-integrations/providers`)
+  );
+  return data.providers;
+}
+
 export async function listEmbeddingIntegrations(): Promise<EmbeddingIntegrationEntry[]> {
   const data = await handle<{ integrations: EmbeddingIntegrationEntry[] }>(
     await fetch(`${BASE}/embedding-integrations`)

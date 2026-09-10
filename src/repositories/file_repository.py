@@ -46,6 +46,9 @@ class FileRepository:
                 "chunks_total": chunks_total,
                 "chunks_done": 0,
                 "error": None,
+                # Batch cũ của lần ingest trước không còn nghĩa lý — reset sạch.
+                "batch_job_id": "",
+                "batch_meta": "",
             },
         )
         with self.db.engine.begin() as conn:
@@ -66,6 +69,39 @@ class FileRepository:
                 .where(self.files.c.file_id == file_id)
                 .values(chunks_done=chunks_done)
             )
+
+    def set_file_batch(
+        self, file_id: str, batch_job_id: str, batch_meta: str, chunks_done: int = 0
+    ) -> None:
+        """Ghi batch job đã submit (status 'batching' do worker set riêng)."""
+        with self.db.engine.begin() as conn:
+            conn.execute(
+                update(self.files)
+                .where(self.files.c.file_id == file_id)
+                .values(
+                    status="batching",
+                    batch_job_id=batch_job_id,
+                    batch_meta=batch_meta,
+                    chunks_done=chunks_done,
+                )
+            )
+
+    def update_batch_progress(self, file_id: str, chunks_done: int) -> None:
+        """Cập nhật tiến độ của file đang chờ batch (không đổi status)."""
+        with self.db.engine.begin() as conn:
+            conn.execute(
+                update(self.files)
+                .where(self.files.c.file_id == file_id)
+                .values(chunks_done=chunks_done)
+            )
+
+    def list_batching_files(self) -> list[dict[str, Any]]:
+        """Các file đang chờ batch job hoàn tất — worker poll mỗi vòng lặp."""
+        with self.db.engine.connect() as conn:
+            rows = conn.execute(
+                select(self.files).where(self.files.c.status == "batching")
+            ).mappings().all()
+        return [dict(row) for row in rows]
 
     def list_files(self) -> list[dict[str, Any]]:
         with self.db.engine.connect() as conn:
@@ -97,7 +133,12 @@ class FileRepository:
         return meta
 
     def fail_interrupted_ingests(self) -> int:
-        """Đánh failed các job dở (queued/parsing/…) sau restart — không tự nhúng lại."""
+        """Đánh failed các job dở (queued/parsing/…) sau restart — không tự nhúng lại.
+
+        File status 'batching' KHÔNG bị đánh failed: batch job nằm ở provider,
+        chạy tiếp độc lập với server — worker sẽ resume poll từ batch_meta khi
+        khởi động lại (job đã mất/hết hạn ở provider → failed rõ ràng lúc poll).
+        """
         transient_statuses = ("queued", "parsing", "chunking", "embedding")
         with self.db.engine.begin() as conn:
             result = conn.execute(

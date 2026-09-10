@@ -68,12 +68,12 @@ class DeterministicEmbedder:
         v = rng.standard_normal(self.dim).astype(np.float32)
         return v / np.linalg.norm(v)
 
-    def embed(self, texts: list[str]) -> np.ndarray:
+    def embed(self, texts: list[str], input_kind: str = "passage") -> np.ndarray:
         if not texts:
             return np.zeros((0, self.dim), dtype=np.float32)
         return np.stack([self._vec(t) for t in texts])
 
-    def embed_one(self, text: str) -> np.ndarray:
+    def embed_one(self, text: str, input_kind: str = "passage") -> np.ndarray:
         return self._vec(text)
 
     def invalidate(self) -> None:

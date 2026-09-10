@@ -1,9 +1,13 @@
 /**
  * Panel danh sách + modal cấu hình tích hợp — dùng chung cho LLM và Embedding.
  *
- * kind="embedding" thêm trường "Chiều vector (dimension)" và luồng xác nhận
- * đổi chiều: backend trả 409 dimension_mismatch → dialog xác nhận → gửi lại
- * force=true (server reset index, mọi file chuyển "cần nạp lại").
+ * kind="embedding" có thêm:
+ * - "Nhà cung cấp" (provider dropdown, preset load từ GET /embedding-integrations/
+ *   providers — backend là nguồn sự thật), model preset + "Khác…" tự nhập,
+ *   chiều vector options theo preset của model + "Khác…".
+ * - "Dùng Batch API (−50%)" — chỉ hiện khi provider hỗ trợ batch.
+ * - Luồng xác nhận đổi chiều: backend trả 409 dimension_mismatch → dialog xác
+ *   nhận → gửi lại force=true (server reset index, mọi file chuyển "cần nạp lại").
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -31,6 +35,7 @@ import {
   deleteEmbeddingIntegration,
   deleteIntegration,
   listEmbeddingIntegrations,
+  listEmbeddingProviders,
   listIntegrations,
   testEmbeddingIntegration,
   testIntegration,
@@ -42,6 +47,7 @@ import type {
   CreateIntegrationPayload,
   DimensionMismatchDetail,
   EmbeddingIntegrationEntry,
+  EmbeddingProviderSpec,
   IntegrationEntry,
   UpdateEmbeddingIntegrationPayload,
   UpdateIntegrationPayload,
@@ -53,6 +59,9 @@ export type IntegrationKind = "llm" | "embedding";
 
 type Entry = IntegrationEntry | EmbeddingIntegrationEntry;
 
+/** Trường dropdown đang mở (portal menu dùng chung cho cả 3 ô chọn). */
+type MenuField = "provider" | "model" | "dimension";
+
 interface Props {
   kind: IntegrationKind;
   onChanged?: () => void;
@@ -63,6 +72,15 @@ const KIND_DEFAULTS: Record<IntegrationKind, { baseUrl: string; model: string; l
   // Embedding: KHÔNG prefill giá trị — form bắt đầu trống, string chỉ là placeholder.
   embedding: { baseUrl: "https://api.mistral.ai/v1", model: "mistral-embed", label: "Embedding" },
 };
+
+/** Dự phòng khi GET /providers lỗi (mạng/API) — vẫn chọn được provider, nhập tay phần còn lại. */
+const FALLBACK_PROVIDERS: EmbeddingProviderSpec[] = [
+  { id: "openai", display_name: "OpenAI", default_base_url: "https://api.openai.com/v1", requires_api_key: true, supports_batch: true, batch_limit: null, models: [] },
+  { id: "mistral", display_name: "Mistral AI", default_base_url: "https://api.mistral.ai/v1", requires_api_key: true, supports_batch: true, batch_limit: null, models: [] },
+  { id: "jina", display_name: "Jina AI", default_base_url: "https://api.jina.ai/v1", requires_api_key: true, supports_batch: true, batch_limit: null, models: [] },
+  { id: "ollama", display_name: "Ollama (self-host)", default_base_url: "http://localhost:11434/v1", requires_api_key: false, supports_batch: false, batch_limit: null, models: [] },
+  { id: "custom", display_name: "Tùy chỉnh (OpenAI-compatible)", default_base_url: "", requires_api_key: true, supports_batch: false, batch_limit: null, models: [] },
+];
 
 function isDimensionConflict(e: unknown): e is ApiError & { detail: DimensionMismatchDetail } {
   return (
@@ -100,6 +118,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formName, setFormName] = useState("");
   const [formProvider, setFormProvider] = useState("openai");
+  const [formUseBatch, setFormUseBatch] = useState(false);
   // Tab LLM giữ behavior prefill cũ; tab Embedding: base URL/model trống (placeholder
   // là hint), chiều mặc định 1024 (dropdown) — đổi qua giao diện chọn chiều.
   const [formBaseUrl, setFormBaseUrl] = useState(kind === "llm" ? defaults.baseUrl : "");
@@ -113,25 +132,56 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
   // Test state
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [dimensionDropdownOpen, setDimensionDropdownOpen] = useState(false);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  // Provider spec list (chỉ embedding) — render dropdown provider/model/chiều từ đây.
+  const [providers, setProviders] = useState<EmbeddingProviderSpec[]>([]);
+  // Chế độ tự nhập (không dùng preset) cho model / chiều vector.
+  const [formModelCustom, setFormModelCustom] = useState(false);
+  const [formDimensionCustom, setFormDimensionCustom] = useState(false);
+  // Dropdown portal tổng quát: 1 menu mở tại một thời điểm.
+  const [openMenu, setOpenMenu] = useState<MenuField | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(
+    null
+  );
+  const triggerRefs = useRef<Partial<Record<MenuField, HTMLButtonElement | null>>>({});
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Nếu đang sửa cấu hình cũ có số chiều ngoài danh sách (vd: 384 MiniLM), vẫn giữ hiển thị
+  const providerList = providers.length > 0 ? providers : FALLBACK_PROVIDERS;
+  const activeProviderSpec = isEmbedding
+    ? providerList.find((p) => p.id === formProvider) ?? null
+    : null;
+  const activeModelPreset =
+    activeProviderSpec?.models.find((m) => m.name === formModel.trim()) ?? null;
+  const providerDisplayName = (id: string) =>
+    providerList.find((p) => p.id === id)?.display_name ?? id;
+
+  // Options chiều vector: theo preset của model đang chọn (dims backend khai báo);
+  // model tự nhập / provider custom → danh sách phổ thông. Giá trị hiện tại ngoài
+  // danh sách (vd cấu hình cũ 384 MiniLM) vẫn được giữ hiển thị.
   const availableDimensionOptions = useMemo(() => {
+    if (!isEmbedding) return [];
+    const base = activeModelPreset ? [...activeModelPreset.dimensions] : [...DIMENSION_OPTIONS];
     const custom = parseInt(formDimension, 10);
-    if (custom > 0 && !DIMENSION_OPTIONS.includes(custom)) {
-      return [...DIMENSION_OPTIONS, custom].sort((a, b) => a - b);
+    if (custom > 0 && !base.includes(custom)) {
+      base.push(custom);
     }
-    return DIMENSION_OPTIONS;
-  }, [formDimension]);
+    return [...new Set(base)].sort((a, b) => a - b);
+  }, [isEmbedding, activeModelPreset, formDimension]);
+
   const fetchIntegrations = useCallback(async () => {
     setLoading(true);
     setActionError(null);
     try {
-      const list = isEmbedding ? await listEmbeddingIntegrations() : await listIntegrations();
-      setIntegrations(list);
+      if (isEmbedding) {
+        const [list, providerSpecs] = await Promise.all([
+          listEmbeddingIntegrations(),
+          listEmbeddingProviders().catch(() => []), // lỗi spec → FALLBACK_PROVIDERS, không chặn panel
+        ]);
+        setIntegrations(list);
+        if (providerSpecs.length > 0) setProviders(providerSpecs);
+      } else {
+        const list = await listIntegrations();
+        setIntegrations(list);
+      }
     } catch (e) {
       setActionError(String(e));
     } finally {
@@ -145,8 +195,8 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
     setTestResult(null);
     setTesting(false);
     setActionError(null);
-    setDimensionDropdownOpen(false);
-    setDropdownPos(null);
+    setOpenMenu(null);
+    setMenuPos(null);
   }, []);
   useEffect(() => {
     void fetchIntegrations();
@@ -162,46 +212,47 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [modalMode, closeModal]);
 
-  const toggleDropdown = () => {
-    if (dimensionDropdownOpen) {
-      setDimensionDropdownOpen(false);
+  const toggleMenu = (field: MenuField) => {
+    if (openMenu === field) {
+      setOpenMenu(null);
       return;
     }
-    if (triggerRef.current) {
-      const r = triggerRef.current.getBoundingClientRect();
+    const trigger = triggerRefs.current[field];
+    if (trigger) {
+      const r = trigger.getBoundingClientRect();
       const menuHeight = 250;
       const spaceBelow = window.innerHeight - r.bottom;
       const placeAbove = spaceBelow < menuHeight + 16 && r.top > menuHeight;
-      setDropdownPos({
+      setMenuPos({
         left: r.left,
         top: placeAbove ? r.top - menuHeight - 6 : r.bottom + 6,
         width: r.width,
       });
     }
-    setDimensionDropdownOpen(true);
+    setOpenMenu(field);
   };
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node;
+      const trigger = openMenu ? triggerRefs.current[openMenu] : null;
       if (
-        triggerRef.current &&
-        !triggerRef.current.contains(target) &&
+        (trigger && !trigger.contains(target)) &&
         menuRef.current &&
         !menuRef.current.contains(target)
       ) {
-        setDimensionDropdownOpen(false);
+        setOpenMenu(null);
       }
     }
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        setDimensionDropdownOpen(false);
+        setOpenMenu(null);
       }
     }
     function handleScrollOrResize(e: Event) {
       if (menuRef.current && menuRef.current.contains(e.target as Node)) return;
-      setDimensionDropdownOpen(false);
+      setOpenMenu(null);
     }
-    if (dimensionDropdownOpen) {
+    if (openMenu) {
       document.addEventListener("mousedown", handleClickOutside);
       window.addEventListener("keydown", handleKeyDown);
       window.addEventListener("scroll", handleScrollOrResize, true);
@@ -213,7 +264,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
         window.removeEventListener("resize", handleScrollOrResize);
       };
     }
-  }, [dimensionDropdownOpen]);
+  }, [openMenu]);
 
 
   const activeIntegration = integrations.find((i) => i.is_active);
@@ -229,9 +280,13 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
     setEditingId(item.id);
     setFormName(item.name);
     setFormProvider(item.provider || "openai");
+    setFormUseBatch(isEmbedding ? Boolean((item as EmbeddingIntegrationEntry).use_batch) : false);
     setFormBaseUrl(item.base_url);
     setFormModel(item.model);
     if (isEmbedding) setFormDimension(String((item as EmbeddingIntegrationEntry).dimension ?? ""));
+    // Cấu hình cũ có thể dùng model/chiều ngoài preset — mở sẵn chế độ tự nhập đúng giá trị đó.
+    setFormModelCustom(false);
+    setFormDimensionCustom(false);
     setFormApiKey("");
     setFormIsActive(item.is_active);
     setShowApiKey(false);
@@ -245,15 +300,51 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
     setEditingId(null);
     setFormName("");
     setFormProvider("openai");
+    setFormUseBatch(false);
     setFormBaseUrl(kind === "llm" ? defaults.baseUrl : "");
     setFormModel(kind === "llm" ? defaults.model : "");
     setFormDimension(kind === "llm" ? "" : String(DEFAULT_DIMENSION));
+    setFormModelCustom(false);
+    setFormDimensionCustom(false);
     setFormApiKey("");
     setFormIsActive(integrations.length === 0);
     setShowApiKey(false);
     setTestResult(null);
     setActionError(null);
     setModalMode("create");
+  };
+
+  /** Chọn provider từ dropdown: prefill base_url (sửa được) + reset model/chiều. */
+  const handleProviderSelect = (id: string) => {
+    setFormProvider(id);
+    setOpenMenu(null);
+    setFormUseBatch(false); // capability khác nhau giữa các nhà — luôn reset về an toàn
+    const spec = providerList.find((p) => p.id === id);
+    setFormBaseUrl(spec?.default_base_url ?? "");
+    const firstModel = spec?.models[0];
+    if (firstModel) {
+      setFormModel(firstModel.name);
+      setFormModelCustom(false);
+      setFormDimension(String(firstModel.dimensions[firstModel.dimensions.length - 1]));
+      setFormDimensionCustom(false);
+    } else {
+      setFormModel("");
+      setFormModelCustom(true);
+      setFormDimension(String(DEFAULT_DIMENSION));
+      setFormDimensionCustom(false);
+    }
+  };
+
+  /** Chọn model preset: chiều auto theo preset (mặc định max). */
+  const handleModelSelect = (name: string) => {
+    setFormModel(name);
+    setOpenMenu(null);
+    setFormModelCustom(false);
+    const preset = activeProviderSpec?.models.find((m) => m.name === name);
+    if (preset && preset.dimensions.length > 0) {
+      setFormDimension(String(preset.dimensions[preset.dimensions.length - 1]));
+      setFormDimensionCustom(false);
+    }
   };
 
   const handleActivate = async (id: string, force = false) => {
@@ -321,6 +412,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
     try {
       if (isEmbedding) {
         const res = await testEmbeddingIntegration({
+          provider: formProvider,
           model: formModel.trim(),
           base_url: formBaseUrl.trim(),
           dimension: parseInt(formDimension, 10),
@@ -377,6 +469,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
             base_url: formBaseUrl.trim(),
             model: formModel.trim(),
             dimension,
+            use_batch: formUseBatch,
             is_active: formIsActive,
             force,
           };
@@ -409,6 +502,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
             model: formModel.trim(),
             dimension,
             api_key: formApiKey.trim(),
+            use_batch: formUseBatch,
             is_active: formIsActive,
             force,
           };
@@ -546,6 +640,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                     {item.model}
                     {isEmbedding &&
                       ` · ${(item as EmbeddingIntegrationEntry).dimension}d`}
+                    {isEmbedding && (item as EmbeddingIntegrationEntry).use_batch && " · batch"}
                   </span>
                 </div>
               </div>
@@ -675,8 +770,10 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
                           Nhà cung cấp (Provider)
                         </span>
-                        <span className="font-mono text-text capitalize text-[13px]">
-                          {detailItem.provider || "openai"}
+                        <span className="font-mono text-text text-[13px]">
+                          {isEmbedding
+                            ? providerDisplayName(detailItem.provider || "openai")
+                            : detailItem.provider || "openai"}
                         </span>
                       </div>
                     </div>
@@ -700,6 +797,25 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                         <span className="font-mono text-text text-[13px]">
                           {(detailItem as EmbeddingIntegrationEntry).dimension}
                         </span>
+                      </div>
+                    )}
+
+                    {/* Batch API (chỉ embedding) */}
+                    {isEmbedding && (
+                      <div className="flex items-center justify-between rounded-xl bg-bg-elevated/50 border border-border/60 px-3.5 py-2.5">
+                        <span className="text-muted font-medium text-[12.5px]">
+                          Dùng Batch API khi nạp tài liệu
+                        </span>
+                        {(detailItem as EmbeddingIntegrationEntry).use_batch ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 border border-accent/30 px-3 py-0.5 text-[11.5px] font-semibold text-accent">
+                            <Zap size={12} />
+                            Bật (−50%)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-bg-soft border border-border/80 px-3 py-0.5 text-[11.5px] font-medium text-muted">
+                            Tắt
+                          </span>
+                        )}
                       </div>
                     )}
 
@@ -751,6 +867,7 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                     )}
                   </div>
                 ) : (
+                  <>
                   /* ================= EDIT / CREATE FORM ================= */
                   <form
                     id={`integration-form-${kind}`}
@@ -791,86 +908,169 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                       />
                     </div>
 
-                    {/* Model */}
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[12px] font-semibold text-muted">Tên Model *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder={isEmbedding ? "mistral-embed" : "gpt-4o-mini"}
-                        value={formModel}
-                        onChange={(e) => setFormModel(e.target.value)}
-                        className="rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[12.5px] text-text placeholder:text-muted focus:border-accent"
-                      />
-                    </div>
+                    {/* Nhà cung cấp + Model + Chiều vector + Batch — chỉ embedding:
+                        dropdown portal tổng quát (1 menu mở tại một thời điểm). */}
+                    {isEmbedding && (
+                      <>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[12px] font-semibold text-muted">
+                            Nhà cung cấp
+                          </label>
+                          <button
+                            ref={(el) => {
+                              triggerRefs.current["provider"] = el;
+                            }}
+                            type="button"
+                            onClick={() => toggleMenu("provider")}
+                            className="w-full flex items-center justify-between rounded-xl border border-border bg-bg-card px-3.5 py-2.5 text-[13px] font-medium text-text transition hover:border-accent/40 hover:bg-bg-elevated/40 focus:border-accent cursor-pointer select-none"
+                            aria-haspopup="listbox"
+                            aria-expanded={openMenu === "provider"}
+                          >
+                            <span className="truncate">
+                              {providerDisplayName(formProvider)}
+                            </span>
+                            <ChevronDown
+                              size={15}
+                              className={`text-muted transition-transform duration-200 ${
+                                openMenu === "provider" ? "rotate-180 text-accent" : ""
+                              }`}
+                            />
+                          </button>
+                        </div>
 
-                    {/* Chiều vector — chỉ embedding: dropdown đồng bộ vibe, portaled tránh giãn modal và double scroll */}
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[12px] font-semibold text-muted">
+                            Tên Model *
+                          </label>
+                          {formModelCustom ? (
+                            <input
+                              type="text"
+                              required
+                              placeholder="vd: my-embedding-model"
+                              value={formModel}
+                              onChange={(e) => setFormModel(e.target.value)}
+                              className="rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[12.5px] text-text placeholder:text-muted focus:border-accent"
+                            />
+                          ) : (
+                            <button
+                              ref={(el) => {
+                                triggerRefs.current["model"] = el;
+                              }}
+                              type="button"
+                              onClick={() => toggleMenu("model")}
+                              className="w-full flex items-center justify-between rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[13px] font-medium text-text transition hover:border-accent/40 hover:bg-bg-elevated/40 focus:border-accent cursor-pointer select-none"
+                              aria-haspopup="listbox"
+                              aria-expanded={openMenu === "model"}
+                            >
+                              <span className="truncate">{formModel || "Chọn model…"}</span>
+                              <ChevronDown
+                                size={15}
+                                className={`text-muted transition-transform duration-200 ${
+                                  openMenu === "model" ? "rotate-180 text-accent" : ""
+                                }`}
+                              />
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Model — LLM giữ input text như cũ */}
+                    {!isEmbedding && (
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[12px] font-semibold text-muted">
+                          Tên Model *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="gpt-4o-mini"
+                          value={formModel}
+                          onChange={(e) => setFormModel(e.target.value)}
+                          className="rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[12.5px] text-text placeholder:text-muted focus:border-accent"
+                        />
+                      </div>
+                    )}
+
+                    {/* Chiều vector — chỉ embedding */}
                     {isEmbedding && (
                       <div className="flex flex-col gap-1.5">
                         <label className="text-[12px] font-semibold text-muted">
                           Chiều vector *
                         </label>
-                        <button
-                          ref={triggerRef}
-                          type="button"
-                          onClick={toggleDropdown}
-                          className="w-full flex items-center justify-between rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[13px] font-medium text-text transition hover:border-accent/40 hover:bg-bg-elevated/40 focus:border-accent cursor-pointer select-none"
-                          aria-haspopup="listbox"
-                          aria-expanded={dimensionDropdownOpen}
+                        {formDimensionCustom ? (
+                          <input
+                            type="number"
+                            min={1}
+                            max={16384}
+                            required
+                            placeholder="vd: 1024"
+                            value={formDimension}
+                            onChange={(e) => setFormDimension(e.target.value)}
+                            className="rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[12.5px] text-text placeholder:text-muted focus:border-accent"
+                          />
+                        ) : (
+                          <button
+                            ref={(el) => {
+                              triggerRefs.current["dimension"] = el;
+                            }}
+                            type="button"
+                            onClick={() => toggleMenu("dimension")}
+                            className="w-full flex items-center justify-between rounded-xl border border-border bg-bg-card px-3.5 py-2.5 font-mono text-[13px] font-medium text-text transition hover:border-accent/40 hover:bg-bg-elevated/40 focus:border-accent cursor-pointer select-none"
+                            aria-haspopup="listbox"
+                            aria-expanded={openMenu === "dimension"}
+                          >
+                            <span>{formDimension || String(DEFAULT_DIMENSION)}</span>
+                            <ChevronDown
+                              size={15}
+                              className={`text-muted transition-transform duration-200 ${
+                                openMenu === "dimension" ? "rotate-180 text-accent" : ""
+                              }`}
+                            />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Batch API toggle — chỉ hiện khi provider hỗ trợ */}
+                    {isEmbedding && activeProviderSpec?.supports_batch && (
+                      <div
+                        className="flex items-center justify-between rounded-xl border border-border bg-bg-card px-3.5 py-2.5 cursor-pointer select-none transition hover:border-border/90 hover:bg-bg-elevated/40"
+                        onClick={() => setFormUseBatch(!formUseBatch)}
+                        role="switch"
+                        aria-checked={formUseBatch}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === " " || e.key === "Enter") {
+                            e.preventDefault();
+                            setFormUseBatch(!formUseBatch);
+                          }
+                        }}
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[13px] font-medium text-text">
+                            Dùng Batch API{" "}
+                            <span className="ml-1 rounded-full bg-accent/10 border border-accent/30 px-2 py-0.5 text-[10.5px] font-semibold text-accent">
+                              −50% chi phí
+                            </span>
+                          </span>
+                          <span className="text-[11.5px] text-muted">
+                            Nạp tài liệu qua batch bất đồng bộ — hoàn thành trong 24h
+                          </span>
+                        </div>
+                        <div
+                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out ${
+                            formUseBatch ? "bg-accent" : "bg-bg-elevated border border-border/80"
+                          }`}
                         >
-                          <span>{formDimension || String(DEFAULT_DIMENSION)}</span>
-                          <ChevronDown
-                            size={15}
-                            className={`text-muted transition-transform duration-200 ${
-                              dimensionDropdownOpen ? "rotate-180 text-accent" : ""
+                          <span
+                            className={`inline-block size-3.5 transform rounded-full shadow-xs transition duration-200 ease-in-out ${
+                              formUseBatch
+                                ? "translate-x-4 bg-accent-contrast"
+                                : "translate-x-0.5 bg-muted/70"
                             }`}
                           />
-                        </button>
-
-                        {dimensionDropdownOpen &&
-                          dropdownPos &&
-                          createPortal(
-                            <div
-                              ref={menuRef}
-                              role="listbox"
-                              style={{
-                                position: "fixed",
-                                top: dropdownPos.top,
-                                left: dropdownPos.left,
-                                width: dropdownPos.width,
-                                zIndex: 9999,
-                              }}
-                              className="flex flex-col gap-1 rounded-xl border border-border bg-bg-card p-1.5 shadow-2xl backdrop-blur-md"
-                            >
-                              {availableDimensionOptions.map((d) => {
-                                const isSelected =
-                                  String(d) === (formDimension || String(DEFAULT_DIMENSION));
-                                return (
-                                  <button
-                                    key={d}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={isSelected}
-                                    onClick={() => {
-                                      setFormDimension(String(d));
-                                      setDimensionDropdownOpen(false);
-                                    }}
-                                    className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-left font-mono text-[13px] transition-all cursor-pointer ${
-                                      isSelected
-                                        ? "bg-accent/10 text-accent font-semibold hover:bg-accent/15"
-                                        : "text-text hover:bg-bg-elevated/70"
-                                    }`}
-                                  >
-                                    <span>{d}</span>
-                                    {isSelected && (
-                                      <Check size={14} className="text-accent shrink-0" />
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>,
-                            document.body
-                          )}
+                        </div>
                       </div>
                     )}
 
@@ -967,6 +1167,151 @@ export default function IntegrationPanel({ kind, onChanged }: Props) {
                       </div>
                     )}
                   </form>
+
+                  {/* Dropdown portal dùng chung: provider / model / chiều vector */}
+                  {isEmbedding &&
+                    openMenu &&
+                    menuPos &&
+                    createPortal(
+                      <div
+                        ref={menuRef}
+                        role="listbox"
+                        style={{
+                          position: "fixed",
+                          top: menuPos.top,
+                          left: menuPos.left,
+                          width: menuPos.width,
+                          zIndex: 9999,
+                        }}
+                        className="flex max-h-[280px] flex-col gap-1 overflow-y-auto rounded-xl border border-border bg-bg-card p-1.5 shadow-2xl backdrop-blur-md"
+                      >
+                        {openMenu === "provider" &&
+                          providerList.map((p) => {
+                            const isSelected = p.id === formProvider;
+                            return (
+                              <button
+                                key={p.id}
+                                type="button"
+                                role="option"
+                                aria-selected={isSelected}
+                                onClick={() => handleProviderSelect(p.id)}
+                                className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] transition-all cursor-pointer ${
+                                  isSelected
+                                    ? "bg-accent/10 text-accent font-semibold hover:bg-accent/15"
+                                    : "text-text hover:bg-bg-elevated/70"
+                                }`}
+                              >
+                                <span className="flex items-center gap-2 truncate">
+                                  {p.display_name}
+                                  {p.supports_batch && (
+                                    <span className="shrink-0 rounded-full bg-accent/10 border border-accent/25 px-1.5 py-px text-[9.5px] font-semibold text-accent">
+                                      Batch
+                                    </span>
+                                  )}
+                                </span>
+                                {isSelected && (
+                                  <Check size={14} className="text-accent shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        {openMenu === "model" &&
+                          (activeProviderSpec?.models.length ? (
+                            activeProviderSpec.models.map((m) => {
+                              const isSelected = m.name === formModel;
+                              return (
+                                <button
+                                  key={m.name}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={isSelected}
+                                  onClick={() => handleModelSelect(m.name)}
+                                  className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-left font-mono text-[13px] transition-all cursor-pointer ${
+                                    isSelected
+                                      ? "bg-accent/10 text-accent font-semibold hover:bg-accent/15"
+                                      : "text-text hover:bg-bg-elevated/70"
+                                  }`}
+                                >
+                                  <span className="truncate">{m.name}</span>
+                                  {isSelected && (
+                                    <Check size={14} className="text-accent shrink-0" />
+                                  )}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <div className="px-3 py-2 text-[12px] text-muted">
+                              Provider này không có preset — hãy nhập tên model ở ô trên.
+                            </div>
+                          ))}
+                        {openMenu === "model" && (
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={formModelCustom}
+                            onClick={() => {
+                              setFormModelCustom(true);
+                              setOpenMenu(null);
+                            }}
+                            className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] transition-all cursor-pointer ${
+                              formModelCustom
+                                ? "bg-accent/10 text-accent font-semibold hover:bg-accent/15"
+                                : "text-text hover:bg-bg-elevated/70"
+                            }`}
+                          >
+                            <span>Khác… (tự nhập)</span>
+                          </button>
+                        )}
+                        {openMenu === "dimension" &&
+                          availableDimensionOptions.map((d) => {
+                            const isSelected =
+                              String(d) === (formDimension || String(DEFAULT_DIMENSION));
+                            return (
+                              <button
+                                key={d}
+                                type="button"
+                                role="option"
+                                aria-selected={isSelected}
+                                onClick={() => {
+                                  setFormDimension(String(d));
+                                  setFormDimensionCustom(false);
+                                  setOpenMenu(null);
+                                }}
+                                className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-left font-mono text-[13px] transition-all cursor-pointer ${
+                                  isSelected
+                                    ? "bg-accent/10 text-accent font-semibold hover:bg-accent/15"
+                                    : "text-text hover:bg-bg-elevated/70"
+                                }`}
+                              >
+                                <span>{d}</span>
+                                {isSelected && (
+                                  <Check size={14} className="text-accent shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        {openMenu === "dimension" && (
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={formDimensionCustom}
+                            onClick={() => {
+                              setFormDimensionCustom(true);
+                              setOpenMenu(null);
+                            }}
+                            className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-left text-[13px] transition-all cursor-pointer ${
+                              formDimensionCustom
+                                ? "bg-accent/10 text-accent font-semibold hover:bg-accent/15"
+                                : "text-text hover:bg-bg-elevated/70"
+                            }`}
+                          >
+                            <span>Khác… (tự nhập)</span>
+                          </button>
+                        )}
+                      </div>,
+                      document.body
+                    )}
+                  </>
                 )}
               </div>
 

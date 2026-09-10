@@ -151,6 +151,7 @@ source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "langchain-core" },
     { name = "langchain-openai" },
     { name = "langchain-text-splitters" },
@@ -179,6 +180,7 @@ dev = [
 requires-dist = [
     { name = "cryptography" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "langchain-core" },
     { name = "langchain-openai" },
     { name = "langchain-text-splitters" },

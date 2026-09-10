@@ -16,6 +16,7 @@ const STATUS_LABEL: Record<FileEntry["status"], string> = {
   parsing: "Đang đọc file",
   chunking: "Đang cắt đoạn",
   embedding: "Đang embedding",
+  batching: "Chờ batch (−50%)",
   ready: "Sẵn sàng",
   failed: "Lỗi",
 };

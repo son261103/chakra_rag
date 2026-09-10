@@ -1,6 +1,8 @@
-"""Unit tests cho Embedder API (core.embedding) — không mạng, fake OpenAIEmbeddings.
+"""Unit tests cho Embedder API (core.embedding) — không mạng, fake adapter.
 
 Embedding KHÔNG có fallback env: không có integration active → EmbeddingConfigError.
+Seam patch: `core.embedding.get_adapter` — Embedder gọi hàm này để lấy adapter
+(theo provider id trong row), nên thay adapter thật bằng fake là đủ.
 """
 
 from __future__ import annotations
@@ -10,29 +12,56 @@ import pytest
 
 from config import Config
 from core.embedding import Embedder, EmbeddingConfigError
+from core.providers import PROVIDER_REGISTRY
+from core.providers.base import BatchResults, BatchStatus
 from core.security import encrypt_integration_key
 
+DIM = 4
 
-class _FakeOpenAIEmbeddings:
-    """Fake OpenAIEmbeddings: trả vector thô (CHƯA normalize) với chiều cấu hình được."""
 
-    dim = 4
-    last_kwargs: dict | None = None
+class _FakeAdapter:
+    """Adapter fake: sync_embed trả vector thô (CHƯA normalize) chiều cấu hình được."""
 
-    def __init__(self, **kwargs):
-        type(self).last_kwargs = kwargs
+    def __init__(self, spec=None, dim=DIM):
+        self.spec = spec or PROVIDER_REGISTRY["custom"]
+        self.dim = dim
+        self.sync_calls: list[tuple[list[str], str]] = []
+        self.built_clients: list[tuple[str, str, str]] = []
+        self.fetch_results = BatchResults(by_id={})
 
-    def embed_documents(self, texts):
+    def build_client(self, cfg, timeout):
+        self.built_clients.append((cfg.base_url, cfg.model, cfg.api_key))
+        return object()  # client dummy — không dùng gì ngoài truyền lại
+
+    def sync_embed(self, client, cfg, texts, input_kind):
+        self.sync_calls.append((list(texts), input_kind))
         return [[2.0] * self.dim for _ in texts]
+
+    def submit_batch(self, client, cfg, items):
+        return "job-1"
+
+    def batch_status(self, client, cfg, job_id):
+        return BatchStatus(state="completed", completed=1, total=1)
+
+    def fetch_batch_results(self, client, cfg, job_id):
+        return self.fetch_results
 
 
 @pytest.fixture(autouse=True)
-def _patch_embeddings(monkeypatch):
-    import langchain_openai
+def _patch_adapter(monkeypatch):
+    import core.embedding as emb_mod
+    import core.providers as prov_mod
 
-    monkeypatch.setattr(langchain_openai, "OpenAIEmbeddings", _FakeOpenAIEmbeddings)
-    _FakeOpenAIEmbeddings.dim = 4
-    _FakeOpenAIEmbeddings.last_kwargs = None
+    adapter = _FakeAdapter()
+    # Validate provider id bằng registry THẬT (id lạ vẫn raise ValueError →
+    # EmbeddingConfigError), chỉ thay phần dựng adapter/call network bằng fake.
+    def _fake_get_adapter(provider_id):
+        prov_mod.get_adapter(provider_id)
+        return adapter
+
+    monkeypatch.setattr(emb_mod, "get_adapter", _fake_get_adapter)
+    _patch_adapter.adapter = adapter  # type: ignore[attr-defined]
+    return adapter
 
 
 def _cfg() -> Config:
@@ -40,12 +69,17 @@ def _cfg() -> Config:
     return Config(encryption_key="test-kek")
 
 
-def _row(base_url="http://fake/v1", model="fake-embed", dimension=4, api_key=""):
+def _row(
+    base_url="http://fake/v1", model="fake-embed", dimension=DIM, api_key="", provider="custom"
+):
     enc = encrypt_integration_key(api_key, "test-kek")
     return {
+        "id": "int-1",
+        "provider": provider,
         "base_url": base_url,
         "model": model,
         "dimension": dimension,
+        "use_batch": 0,
         "encrypted_api_key": enc.encrypted_api_key,
         "encrypted_dek": enc.encrypted_dek,
     }
@@ -58,6 +92,13 @@ class _FakeRepo:
     def get_active_integration(self):
         return self.row
 
+    def get_integration(self, integration_id):
+        return self.row
+
+
+def _adapter() -> _FakeAdapter:
+    return _patch_adapter.adapter  # type: ignore[attr-defined]
+
 
 def test_embed_uses_active_row_normalizes():
     embedder = Embedder(_cfg(), _FakeRepo(_row(api_key="k1")))
@@ -66,17 +107,24 @@ def test_embed_uses_active_row_normalizes():
     assert out.dtype == np.float32
     # Vector thô [2,2,2,2] → L2-normalize → mỗi thành phần 0.5
     assert np.allclose(out, 0.5)
-    kwargs = _FakeOpenAIEmbeddings.last_kwargs
-    assert kwargs["model"] == "fake-embed"
-    assert kwargs["openai_api_base"] == "http://fake/v1"
-    assert kwargs["openai_api_key"] == "k1"
+    texts, input_kind = _adapter().sync_calls[0]
+    assert texts == ["a", "b"]
+    assert input_kind == "passage"
+    assert _adapter().built_clients[0] == ("http://fake/v1", "fake-embed", "k1")
 
 
-def test_embed_one():
+def test_embed_one_defaults_to_passage():
     embedder = Embedder(_cfg(), _FakeRepo(_row()))
     v = embedder.embed_one("hello")
     assert v.shape == (4,)
     assert np.isclose(np.linalg.norm(v), 1.0)
+    assert _adapter().sync_calls[0][1] == "passage"
+
+
+def test_input_kind_query_forwarded():
+    embedder = Embedder(_cfg(), _FakeRepo(_row()))
+    embedder.embed_one("câu hỏi?", input_kind="query")
+    assert _adapter().sync_calls[0][1] == "query"
 
 
 def test_empty_texts_returns_zero_matrix():
@@ -85,7 +133,7 @@ def test_empty_texts_returns_zero_matrix():
 
 
 def test_dimension_mismatch_raises():
-    _FakeOpenAIEmbeddings.dim = 3
+    _adapter().dim = 3
     embedder = Embedder(_cfg(), _FakeRepo(_row()))
     with pytest.raises(EmbeddingConfigError, match="3 chiều"):
         embedder.embed(["a"])
@@ -106,30 +154,75 @@ def test_incomplete_row_raises():
         embedder.embed(["a"])
 
 
+def test_unknown_provider_raises_clear_error():
+    embedder = Embedder(_cfg(), _FakeRepo(_row(provider="no-such-provider")))
+    with pytest.raises(EmbeddingConfigError, match="không hỗ trợ"):
+        embedder.embed(["a"])
+
+
 def test_key_decrypted_with_envelope():
-    row = _row(api_key="secret-key")
-    embedder = Embedder(_cfg(), _FakeRepo(row))
+    embedder = Embedder(_cfg(), _FakeRepo(_row(api_key="secret-key")))
     embedder.embed(["x"])
-    assert _FakeOpenAIEmbeddings.last_kwargs["openai_api_key"] == "secret-key"
+    assert _adapter().built_clients[0][2] == "secret-key"
 
 
 def test_fingerprint_rebuilds_client_on_change():
     repo = _FakeRepo(_row())
     embedder = Embedder(_cfg(), repo)
     embedder.embed(["a"])
-    first = dict(_FakeOpenAIEmbeddings.last_kwargs)
+    assert len(_adapter().built_clients) == 1
     repo.row = _row(base_url="http://other/v1", model="other-embed")
     embedder.embed(["a"])
-    second = _FakeOpenAIEmbeddings.last_kwargs
-    assert second["model"] == "other-embed"
-    assert second["openai_api_base"] == "http://other/v1"
-    assert first != second
+    assert len(_adapter().built_clients) == 2
+    assert _adapter().built_clients[1] == ("http://other/v1", "other-embed", "")
 
 
-def test_invalidate_clears_cached_client():
+def test_invalidate_clears_cached_clients():
     embedder = Embedder(_cfg(), _FakeRepo(_row()))
     embedder.embed(["a"])
-    assert embedder._client is not None
+    assert embedder._clients
     embedder.invalidate()
-    assert embedder._client is None
-    assert embedder._fingerprint is None
+    assert not embedder._clients
+
+
+def test_can_batch_requires_use_batch_and_provider_support():
+    cfg = Embedder(_cfg(), _FakeRepo(_row())).resolve_active_config()
+    # provider "custom" không hỗ trợ batch
+    assert not Embedder(_cfg(), _FakeRepo(_row())).can_batch(cfg)
+    # provider hỗ trợ + integration bật use_batch
+    openai_spec = PROVIDER_REGISTRY["openai"]
+    _patch_adapter.adapter.spec = openai_spec  # type: ignore[attr-defined]
+    row = _row(provider="openai")
+    row["use_batch"] = 1
+    embedder = Embedder(_cfg(), _FakeRepo(row))
+    assert embedder.can_batch(embedder.resolve_active_config())
+    # provider hỗ trợ nhưng integration chưa bật
+    row["use_batch"] = 0
+    assert not embedder.can_batch(embedder.resolve_active_config())
+
+
+def test_fetch_batch_results_validates_and_normalizes():
+    _patch_adapter.adapter.spec = PROVIDER_REGISTRY["openai"]  # type: ignore[attr-defined]
+    row = _row(provider="openai")
+    row["use_batch"] = 1
+    embedder = Embedder(_cfg(), _FakeRepo(row))
+    cfg = embedder.resolve_active_config()
+    _patch_adapter.adapter.fetch_results = BatchResults(by_id={"c1": [2.0] * DIM})  # type: ignore[attr-defined]
+    out = embedder.fetch_batch_results("job-1", cfg)
+    assert np.allclose(out.by_id["c1"], 0.5)
+
+    # Sai chiều → raise tường minh
+    _patch_adapter.adapter.fetch_results = BatchResults(by_id={"c1": [2.0] * 3})  # type: ignore[attr-defined]
+    with pytest.raises(EmbeddingConfigError, match="3 chiều"):
+        embedder.fetch_batch_results("job-1", cfg)
+
+
+def test_fetch_batch_results_ordered_normalized():
+    _patch_adapter.adapter.spec = PROVIDER_REGISTRY["jina"]  # type: ignore[attr-defined]
+    row = _row(provider="jina")
+    row["use_batch"] = 1
+    embedder = Embedder(_cfg(), _FakeRepo(row))
+    cfg = embedder.resolve_active_config()
+    _patch_adapter.adapter.fetch_results = BatchResults(ordered=[[2.0] * DIM])  # type: ignore[attr-defined]
+    out = embedder.fetch_batch_results("job-1", cfg)
+    assert np.allclose(out.ordered[0], 0.5)

@@ -37,6 +37,7 @@ class EmbeddingIntegrationRepository:
         encrypted_api_key: str = "",
         encrypted_dek: str = "",
         is_active: bool = False,
+        use_batch: bool = False,
         integration_id: str | None = None,
     ) -> dict[str, Any]:
         iid = integration_id or new_id()
@@ -56,6 +57,7 @@ class EmbeddingIntegrationRepository:
                     base_url=base_url.strip(),
                     model=model.strip(),
                     dimension=int(dimension),
+                    use_batch=1 if use_batch else 0,
                     encrypted_api_key=encrypted_api_key,
                     encrypted_dek=encrypted_dek,
                     is_active=should_activate,
@@ -76,6 +78,7 @@ class EmbeddingIntegrationRepository:
         encrypted_api_key: str | None = None,
         encrypted_dek: str | None = None,
         is_active: bool | None = None,
+        use_batch: bool | None = None,
     ) -> dict[str, Any] | None:
         now = utcnow_iso()
         values: dict[str, Any] = {"updated_at": now}
@@ -89,6 +92,8 @@ class EmbeddingIntegrationRepository:
             values["base_url"] = base_url.strip()
         if provider is not None:
             values["provider"] = provider.strip()
+        if use_batch is not None:
+            values["use_batch"] = 1 if use_batch else 0
         if encrypted_api_key is not None:
             values["encrypted_api_key"] = encrypted_api_key
         if encrypted_dek is not None:

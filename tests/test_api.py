@@ -158,10 +158,11 @@ def test_test_integration_endpoint(client):
 _EMBED_ROW = {
     "id": "e1",
     "name": "Mistral",
-    "provider": "openai",
+    "provider": "mistral",
     "base_url": "https://api.mistral.ai/v1",
     "model": "mistral-embed",
     "dimension": 1024,
+    "use_batch": False,
     "masked_api_key": "abc...xyz",
     "has_api_key": True,
     "is_active": True,
@@ -185,6 +186,7 @@ def test_create_embedding_integration(client):
         "/embedding-integrations",
         json={
             "name": "Mistral",
+            "provider": "mistral",
             "base_url": "https://api.mistral.ai/v1",
             "model": "mistral-embed",
             "dimension": 1024,
@@ -195,6 +197,53 @@ def test_create_embedding_integration(client):
     assert r.status_code == 200
     assert r.json()["dimension"] == 1024
     client.service.embedding_integrations.create_integration.assert_called_once()
+
+
+def test_create_embedding_unknown_provider_422(client):
+    r = client.post(
+        "/embedding-integrations",
+        json={
+            "name": "X",
+            "provider": "nope",
+            "base_url": "https://x/v1",
+            "model": "m",
+            "dimension": 1024,
+        },
+    )
+    assert r.status_code == 422  # Literal validation — không fallback
+
+
+def test_create_embedding_use_batch_unsupported_provider_422(client):
+    """use_batch=true với provider không có Batch API → 422 tường minh (không fallback sync)."""
+    client.service.embedding_integrations.create_integration.side_effect = ValueError(
+        "Provider 'Ollama (self-host)' không hỗ trợ Batch API — "
+        "không thể bật 'Dùng Batch API'."
+    )
+    r = client.post(
+        "/embedding-integrations",
+        json={
+            "name": "Ollama",
+            "provider": "ollama",
+            "base_url": "http://localhost:11434/v1",
+            "model": "nomic-embed-text",
+            "dimension": 768,
+            "use_batch": True,
+        },
+    )
+    assert r.status_code == 422
+    assert "Batch API" in r.json()["detail"]
+
+
+def test_list_embedding_providers_endpoint(client):
+    """GET /providers không qua service (spec tĩnh) — assert payload shape."""
+    r = client.get("/embedding-integrations/providers")
+    assert r.status_code == 200
+    providers = {p["id"]: p for p in r.json()["providers"]}
+    assert set(providers) == {"openai", "mistral", "jina", "ollama", "custom"}
+    assert providers["openai"]["supports_batch"] is True
+    assert providers["ollama"]["supports_batch"] is False
+    small = next(m for m in providers["openai"]["models"] if m["name"] == "text-embedding-3-small")
+    assert 1536 in small["dimensions"] and 256 in small["dimensions"]
 
 
 def test_activate_embedding_dimension_conflict_409_then_force(client):

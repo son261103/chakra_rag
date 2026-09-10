@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS embedding_integrations (
     base_url TEXT NOT NULL,
     model TEXT NOT NULL,
     dimension INTEGER NOT NULL,
+    use_batch INTEGER NOT NULL DEFAULT 0,
     encrypted_api_key TEXT NOT NULL,
     encrypted_dek TEXT NOT NULL,
     is_active INTEGER NOT NULL,
@@ -20,3 +21,9 @@ CREATE TABLE IF NOT EXISTS embedding_integrations (
 CREATE INDEX IF NOT EXISTS idx_embedding_integrations_active
     ON embedding_integrations(is_active);
 """.strip()
+
+# DB cũ chưa có cột `use_batch` — ADD COLUMN IF NOT EXISTS chạy lại vô hại.
+EMBEDDING_INTEGRATIONS_MIGRATIONS = """
+ALTER TABLE embedding_integrations ADD COLUMN IF NOT EXISTS use_batch INTEGER NOT NULL DEFAULT 0;
+""".strip()
+

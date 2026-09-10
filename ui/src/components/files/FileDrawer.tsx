@@ -21,11 +21,15 @@ function statusTitle(f: FileEntry): string {
   if (f.status === "embedding") {
     return `${f.name}\nđang embedding ${f.chunks_done}/${f.chunks_total}`;
   }
+  if (f.status === "batching") {
+    return `${f.name}\nchờ batch (−50%) ${f.chunks_done}/${f.chunks_total}`;
+  }
   const label: Record<FileEntry["status"], string> = {
     queued: "chờ xử lý",
     parsing: "đang đọc file",
     chunking: "đang cắt đoạn",
     embedding: "đang embedding",
+    batching: "chờ batch (−50%)",
     ready: "sẵn sàng",
     failed: "lỗi",
   };
@@ -223,7 +227,7 @@ export default function FileDrawer({ open, onClose, files, progress, onInspectFi
                       )}
                     </span>
                     <span className="file-name">{f.name}</span>
-                    {f.status === "embedding" && (
+                    {(f.status === "embedding" || f.status === "batching") && (
                       <span className="file-meta">
                         {f.chunks_done}/{f.chunks_total}
                       </span>

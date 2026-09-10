@@ -4,7 +4,14 @@ export interface FileEntry {
   file_id: string;
   name: string;
   source: "seed" | "upload";
-  status: "queued" | "parsing" | "chunking" | "embedding" | "ready" | "failed";
+  status:
+    | "queued"
+    | "parsing"
+    | "chunking"
+    | "embedding"
+    | "batching"
+    | "ready"
+    | "failed";
   chunks_total: number;
   chunks_done: number;
   error: string | null;
@@ -169,7 +176,24 @@ export interface TestIntegrationResult {
   latency_ms: number;
 }
 
-/** Cấu hình tích hợp Embedding (API + số chiều vector). */
+/** Preset model của một provider: tên + các chiều vector hỗ trợ chọn. */
+export interface ProviderModelPreset {
+  name: string;
+  dimensions: number[];
+}
+
+/** Spec provider embedding — GET /embedding-integrations/providers. */
+export interface EmbeddingProviderSpec {
+  id: string;
+  display_name: string;
+  default_base_url: string;
+  requires_api_key: boolean;
+  supports_batch: boolean;
+  batch_limit: number | null;
+  models: ProviderModelPreset[];
+}
+
+/** Cấu hình tích hợp Embedding (provider + API + số chiều vector + batch). */
 export interface EmbeddingIntegrationEntry {
   id: string;
   name: string;
@@ -177,6 +201,7 @@ export interface EmbeddingIntegrationEntry {
   base_url: string;
   model: string;
   dimension: number;
+  use_batch: boolean;
   masked_api_key: string;
   has_api_key: boolean;
   is_active: boolean;
@@ -191,6 +216,8 @@ export interface CreateEmbeddingIntegrationPayload {
   model: string;
   dimension: number;
   api_key: string;
+  /** Bật Batch API khi nạp tài liệu (chỉ provider hỗ trợ mới chấp nhận). */
+  use_batch?: boolean;
   is_active?: boolean;
   /** true = đã xác nhận đổi chiều vector (reset index) sau khi nhận 409. */
   force?: boolean;
@@ -203,11 +230,13 @@ export interface UpdateEmbeddingIntegrationPayload {
   model?: string;
   dimension?: number;
   api_key?: string;
+  use_batch?: boolean;
   is_active?: boolean;
   force?: boolean;
 }
 
 export interface TestEmbeddingIntegrationPayload {
+  provider?: string;
   model: string;
   base_url: string;
   dimension?: number;
