@@ -23,6 +23,8 @@ dependencies = [
     "pgvector",
     "psycopg[binary]",
     "cohere>=7.1.1",
+    "mistralai>=2.10.0",
+    "ollama>=0.6.2",
 ]
 
 [tool.uv]

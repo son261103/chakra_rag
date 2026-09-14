@@ -17,6 +17,7 @@ from core.providers.base import BatchError, EmbeddingConfig, ModelPreset, Provid
 from core.providers.cohere import CohereAdapter
 from core.providers.jina import JinaAdapter
 from core.providers.mistral import MistralAdapter
+from core.providers.ollama import OllamaAdapter
 from core.providers.openai import OpenAIAdapter
 
 
@@ -256,8 +257,6 @@ def test_openai_fetch_results_maps_by_custom_id():
 
 
 def test_non_batch_provider_raises_clear_error():
-    from core.providers.ollama import OllamaAdapter
-
     with pytest.raises(BatchError, match="không hỗ trợ Batch API"):
         OllamaAdapter().submit_batch(object(), _cfg(provider="ollama"), [("a", "b")])
 
@@ -359,26 +358,101 @@ def test_cohere_fetch_batch_results_downloads_and_parses_jsonl(monkeypatch):
     ds_res_mock.dataset.dataset_parts = [part_mock]
     client.datasets.get.return_value = ds_res_mock
 
-    import io
-    import urllib.request
+    import httpx
 
-    jsonl_bytes = (
-        b'{"custom_id": "c1", "embeddings": {"float": [0.1, 0.2]}}\n'
-        b'{"custom_id": "c2", "embeddings": {"float": [0.3, 0.4]}}\n'
+    jsonl_content = (
+        '{"custom_id": "c1", "embeddings": {"float": [0.1, 0.2]}}\n'
+        '{"custom_id": "c2", "embeddings": {"float": [0.3, 0.4]}}\n'
     )
 
-    class _MockResponse(io.BytesIO):
-        def __enter__(self):
-            return self
+    class _MockHttpxResponse:
+        text = jsonl_content
 
-        def __exit__(self, *args):
+        def raise_for_status(self):
             pass
 
-    monkeypatch.setattr(
-        urllib.request, "urlopen", lambda req, timeout=120.0: _MockResponse(jsonl_bytes)
-    )
+    monkeypatch.setattr(httpx, "get", lambda url, timeout: _MockHttpxResponse())
 
     results = adapter.fetch_batch_results(client, cfg, "ds-123:job-789")
     assert set(results.by_id) == {"c1", "c2"}
     assert results.by_id["c1"] == [0.1, 0.2]
     assert results.by_id["c2"] == [0.3, 0.4]
+
+
+# ---------- mistral provider tests ----------
+
+
+def test_mistral_build_client_strips_v1():
+    adapter = MistralAdapter()
+    for raw in ("https://api.mistral.ai/v1", "https://api.mistral.ai/v1/", "https://api.mistral.ai"):
+        client = adapter.build_client(_cfg(provider="mistral", base_url=raw), timeout=10.0)
+        server_url = client.sdk_configuration.get_server_details()[0]
+        assert server_url == "https://api.mistral.ai"
+
+
+def test_mistral_sync_embed_calls_sdk():
+    adapter = MistralAdapter()
+    client = MagicMock()
+    mock_item = MagicMock(embedding=[0.1, 0.2, 0.3, 0.4])
+    client.embeddings.create.return_value = MagicMock(data=[mock_item])
+
+    cfg = _cfg(provider="mistral", model="mistral-embed", dimension=4)
+    vectors = adapter.sync_embed(client, cfg, ["Xin chào"], "passage")
+
+    assert vectors == [[0.1, 0.2, 0.3, 0.4]]
+    assert client.embeddings.create.call_args.kwargs["model"] == "mistral-embed"
+    assert client.embeddings.create.call_args.kwargs["inputs"] == ["Xin chào"]
+
+
+def test_mistral_batch_flow_calls_sdk():
+    adapter = MistralAdapter()
+    client = MagicMock()
+    client.files.upload.return_value = MagicMock(id="file-123")
+    client.batch.jobs.create.return_value = MagicMock(id="job-456")
+    client.batch.jobs.get.return_value = MagicMock(
+        status="SUCCESS", completed_requests=2, total_requests=2, output_file="out-file-789"
+    )
+
+    jsonl_text = (
+        '{"custom_id": "c1", "response": {"body": {"data": [{"embedding": [1.0, 2.0]}]}}}\n'
+        '{"custom_id": "c2", "response": {"body": {"data": [{"embedding": [3.0, 4.0]}]}}}\n'
+    )
+    client.files.download.return_value = MagicMock(text=jsonl_text)
+
+    cfg = _cfg(provider="mistral", model="mistral-embed", dimension=2)
+    job_id = adapter.submit_batch(client, cfg, [("c1", "text 1"), ("c2", "text 2")])
+    assert job_id == "job-456"
+
+    status = adapter.batch_status(client, cfg, job_id)
+    assert status.state == "completed"
+    assert (status.completed, status.total) == (2, 2)
+
+    results = adapter.fetch_batch_results(client, cfg, job_id)
+    assert set(results.by_id) == {"c1", "c2"}
+    assert results.by_id["c1"] == [1.0, 2.0]
+    assert results.by_id["c2"] == [3.0, 4.0]
+
+
+# ---------- ollama provider tests ----------
+
+
+def test_ollama_build_client_strips_v1():
+    adapter = OllamaAdapter()
+    for raw in ("http://192.168.1.100:11434/v1", "http://192.168.1.100:11434/v1/", "http://192.168.1.100:11434"):
+        client = adapter.build_client(_cfg(provider="ollama", base_url=raw), timeout=20.0)
+        assert "192.168.1.100:11434" in str(client._client.base_url)
+        assert not str(client._client.base_url).endswith("/v1")
+        assert not str(client._client.base_url).endswith("/v1/")
+
+
+def test_ollama_sync_embed_calls_sdk():
+    adapter = OllamaAdapter()
+    client = MagicMock()
+    client.embed.return_value = {"embeddings": [[0.5, 0.6, 0.7, 0.8]]}
+
+    cfg = _cfg(provider="ollama", model="bge-m3", dimension=4)
+    vectors = adapter.sync_embed(client, cfg, ["Văn bản tiếng Việt"], "passage")
+
+    assert vectors == [[0.5, 0.6, 0.7, 0.8]]
+    assert client.embed.call_args.kwargs["model"] == "bge-m3"
+    assert client.embed.call_args.kwargs["input"] == ["Văn bản tiếng Việt"]

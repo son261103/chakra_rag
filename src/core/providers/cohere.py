@@ -17,11 +17,11 @@ import io
 import json
 import logging
 import time
-import urllib.request
 import uuid
 from typing import Any
 
 import cohere
+import httpx
 
 from core.providers.base import (
     BatchError,
@@ -213,23 +213,23 @@ class CohereAdapter:
                 url = getattr(part, "url", None)
                 if not url:
                     continue
-                req = urllib.request.Request(url, headers={"User-Agent": "chakra_rag"})
-                with urllib.request.urlopen(req, timeout=120.0) as resp:
-                    for line_bytes in resp:
-                        line = line_bytes.decode("utf-8").strip()
-                        if not line:
-                            continue
-                        data = json.loads(line)
-                        cid = data.get("custom_id")
-                        embeddings = data.get("embeddings")
-                        if isinstance(embeddings, dict) and "float" in embeddings:
-                            vec = embeddings["float"]
-                        elif isinstance(embeddings, list):
-                            vec = embeddings
-                        else:
-                            continue
-                        if cid:
-                            by_id[str(cid)] = [float(x) for x in vec]
+                resp = httpx.get(url, timeout=120.0)
+                resp.raise_for_status()
+                for line in resp.text.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    data = json.loads(line)
+                    cid = data.get("custom_id")
+                    embeddings = data.get("embeddings")
+                    if isinstance(embeddings, dict) and "float" in embeddings:
+                        vec = embeddings["float"]
+                    elif isinstance(embeddings, list):
+                        vec = embeddings
+                    else:
+                        continue
+                    if cid:
+                        by_id[str(cid)] = [float(x) for x in vec]
 
             if not by_id:
                 raise BatchError(

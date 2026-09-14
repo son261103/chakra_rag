@@ -1,10 +1,8 @@
-"""Provider Mistral AI: mistral-embed / codestral-embed + Batch API /v1/batch/jobs.
+"""Provider Mistral AI: mistral-embed / codestral-embed + Batch API qua official mistralai SDK.
 
-- Sync: /v1/embeddings nhận thêm `output_dimension` ("when feature available" —
-  chỉ preset hỗ trợ chọn chiều mới gửi; mistral-embed cố định 1024).
-- Batch (docs 2026): KHÔNG tương thích OpenAI batches — path riêng `/v1/batch/jobs`
-  (`input_files` số nhiều, `model` ở cấp job) nên phải dùng httpx, giảm 50% giá.
-  Output JSONL mirror format OpenAI (custom_id + response.body.data).
+- Sync: dùng `client.embeddings.create(model=..., inputs=...)`.
+  Với codestral-embed, hỗ trợ gửi thêm `output_dimension` theo MRL.
+- Batch: dùng `client.files.upload` và `client.batch.jobs.create`.
 """
 
 from __future__ import annotations
@@ -14,18 +12,18 @@ import json
 import logging
 from typing import Any
 
-import httpx
+from mistralai.client import Mistral
 
 from core.providers.base import (
     BatchError,
     BatchResults,
+    BatchState,
     BatchStatus,
     EmbeddingConfig,
     InputKind,
     ModelPreset,
     ProviderSpec,
 )
-from core.providers.openai_compat import OpenAICompatAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +33,6 @@ MISTRAL_SPEC = ProviderSpec(
     default_base_url="https://api.mistral.ai/v1",
     requires_api_key=True,
     supports_batch=True,
-    # Batch theo file — docs không nêu trần request cụ thể; đặt cao, vượt giới
-    # hạn thật thì provider trả lỗi tường minh.
     batch_limit=100_000,
     models=(
         ModelPreset("mistral-embed", (1024,)),
@@ -45,19 +41,34 @@ MISTRAL_SPEC = ProviderSpec(
     ),
 )
 
-_STATE_MAP = {
+_STATE_MAP: dict[str, BatchState] = {
     "QUEUED": "queued",
     "RUNNING": "running",
     "SUCCESS": "completed",
     "FAILED": "failed",
     "CANCELLED": "cancelled",
+    "TIMEOUT_EXCEEDED": "failed",
+    "CANCELLATION_REQUESTED": "running",
 }
 
-_UPLOAD_TIMEOUT = 120.0
 
+class MistralAdapter:
+    """Adapter tích hợp Mistral AI qua official mistralai SDK."""
 
-class MistralAdapter(OpenAICompatAdapter):
     spec = MISTRAL_SPEC
+
+    def build_client(self, cfg: EmbeddingConfig, timeout: float) -> Mistral:
+        # SDK paths đã có sẵn /v1 (/v1/embeddings, /v1/batch/jobs) → loại bỏ /v1 ở server_url
+        raw_url = cfg.base_url.strip() or self.spec.default_base_url
+        server_url = (
+            raw_url.rstrip("/").removesuffix("/v1").rstrip("/") or "https://api.mistral.ai"
+        )
+        timeout_ms = int(timeout * 1000) if timeout else None
+        return Mistral(
+            api_key=cfg.api_key or "dummy",
+            server_url=server_url,
+            timeout_ms=timeout_ms,
+        )
 
     def _model_kwargs(self, cfg: EmbeddingConfig, input_kind: InputKind) -> dict[str, Any]:
         preset = self.spec.preset_for(cfg.model)
@@ -65,14 +76,19 @@ class MistralAdapter(OpenAICompatAdapter):
             return {"output_dimension": cfg.dimension}
         return {}
 
-    # ---------- Batch API (REST riêng của Mistral, không dùng openai SDK) ----------
-
-    def _http(self, cfg: EmbeddingConfig, timeout: float) -> httpx.Client:
-        return httpx.Client(
-            base_url=cfg.base_url,
-            headers={"Authorization": f"Bearer {cfg.api_key}"},
-            timeout=timeout,
-        )
+    def sync_embed(
+        self, client: Any, cfg: EmbeddingConfig, texts: list[str], input_kind: InputKind
+    ) -> list[list[float]]:
+        if not texts:
+            return []
+        kwargs: dict[str, Any] = {"model": cfg.model, "inputs": list(texts)}
+        kwargs.update(self._model_kwargs(cfg, input_kind))
+        try:
+            resp = client.embeddings.create(**kwargs)
+        except Exception as exc:
+            logger.warning("Mistral sync embed thất bại: %s", exc)
+            raise
+        return [item.embedding for item in resp.data]
 
     def submit_batch(
         self, client: Any, cfg: EmbeddingConfig, items: list[tuple[str, str]]
@@ -92,82 +108,88 @@ class MistralAdapter(OpenAICompatAdapter):
             }
             buf.write(json.dumps(line, ensure_ascii=False).encode("utf-8") + b"\n")
         buf.seek(0)
-        with self._http(cfg, _UPLOAD_TIMEOUT) as http:
-            r = http.post(
-                "/files",
-                files={"file": ("chakra_rag_batch_input.jsonl", buf, "application/jsonl")},
-                data={"purpose": "batch"},
+
+        try:
+            uploaded = client.files.upload(
+                file={"file_name": "chakra_rag_batch_input.jsonl", "content": buf},
+                purpose="batch",
             )
-            self._raise_if_error(r, "upload file batch")
-            file_id = r.json()["id"]
-            r = http.post(
-                "/batch/jobs",
-                json={
-                    "input_files": [file_id],
-                    "model": cfg.model,
-                    "endpoint": "/v1/embeddings",
-                },
+            file_id = getattr(uploaded, "id", None)
+            if not file_id:
+                raise BatchError("Upload file batch Mistral không trả về file_id.")
+
+            job = client.batch.jobs.create(
+                input_files=[file_id],
+                model=cfg.model,
+                endpoint="/v1/embeddings",
             )
-            self._raise_if_error(r, "tạo batch job")
-            return r.json()["id"]
+            job_id = getattr(job, "id", None)
+            if not job_id:
+                raise BatchError("Tạo batch job Mistral không trả về job_id.")
+            return str(job_id)
+        except Exception as exc:
+            if isinstance(exc, BatchError):
+                raise
+            raise BatchError(f"Mistral batch — nộp job thất bại: {exc}") from exc
 
     def batch_status(self, client: Any, cfg: EmbeddingConfig, job_id: str) -> BatchStatus:
-        with self._http(cfg, _UPLOAD_TIMEOUT) as http:
-            r = http.get(f"/batch/jobs/{job_id}")
-            self._raise_if_error(r, "xem trạng thái batch job")
-            job = r.json()
-        state = _STATE_MAP.get(str(job.get("status", "")).upper(), "unknown")
-        # Provider có thể báo tiến độ trong các trường khác nhau — đọc kiểu tự vệ.
-        counts = job.get("request_counts") or {}
+        try:
+            job = client.batch.jobs.get(job_id=job_id)
+        except Exception as exc:
+            raise BatchError(f"Mistral batch — xem trạng thái thất bại: {exc}") from exc
+
+        raw_status = str(getattr(job, "status", "")).upper()
+        state = _STATE_MAP.get(raw_status, "unknown")
+        completed = getattr(job, "completed_requests", None) or 0
+        total = getattr(job, "total_requests", None) or 0
         return BatchStatus(
             state=state,
-            completed=int(counts.get("completed", 0) or 0),
-            total=int(counts.get("total", 0) or 0),
+            completed=int(completed),
+            total=int(total),
         )
 
     def fetch_batch_results(
         self, client: Any, cfg: EmbeddingConfig, job_id: str
     ) -> BatchResults:
-        with self._http(cfg, _UPLOAD_TIMEOUT) as http:
-            r = http.get(f"/batch/jobs/{job_id}")
-            self._raise_if_error(r, "tải metadata batch job")
-            job = r.json()
-            if str(job.get("status", "")).upper() != "SUCCESS":
-                raise BatchError(f"Batch job {job_id} chưa hoàn tất (status={job.get('status')}).")
-            output_file_id = job.get("output_file_id")
+        try:
+            job = client.batch.jobs.get(job_id=job_id)
+            raw_status = str(getattr(job, "status", "")).upper()
+            if raw_status != "SUCCESS":
+                raise BatchError(f"Batch job {job_id} chưa hoàn tất (status={raw_status}).")
+            output_file_id = getattr(job, "output_file", None)
             if not output_file_id:
                 raise BatchError(f"Batch job {job_id} không có output_file_id.")
-            r = http.get(f"/files/{output_file_id}/content")
-            self._raise_if_error(r, "tải kết quả batch")
-        by_id: dict[str, list[float]] = {}
-        for line in r.text.splitlines():
-            if not line.strip():
-                continue
-            custom_id, embedding = self._parse_output_line(line)
-            if custom_id is None or embedding is None:
-                raise BatchError(
-                    "Dòng output batch Mistral không đọc được "
-                    f"(request có thể đã lỗi): {line[:200]}"
-                )
-            by_id[custom_id] = embedding
-        return BatchResults(by_id=by_id)
+
+            resp = client.files.download(file_id=output_file_id)
+            if hasattr(resp, "text"):
+                text_content = resp.text
+            elif isinstance(resp, bytes):
+                text_content = resp.decode("utf-8")
+            else:
+                text_content = str(resp)
+
+            by_id: dict[str, list[float]] = {}
+            for line in text_content.splitlines():
+                if not line.strip():
+                    continue
+                custom_id, embedding = self._parse_output_line(line)
+                if custom_id is None or embedding is None:
+                    raise BatchError(
+                        "Dòng output batch Mistral không đọc được "
+                        f"(request có thể đã lỗi): {line[:200]}"
+                    )
+                by_id[custom_id] = embedding
+            return BatchResults(by_id=by_id)
+        except Exception as exc:
+            if isinstance(exc, BatchError):
+                raise
+            raise BatchError(f"Mistral batch — tải kết quả thất bại: {exc}") from exc
 
     @staticmethod
     def _parse_output_line(line: str) -> tuple[str | None, list[float] | None]:
-        """Parse 1 dòng output — thử các shape khả dĩ (format chính thức mirror OpenAI)."""
         rec = json.loads(line)
         custom_id = rec.get("custom_id")
         body = (rec.get("response") or {}).get("body") or rec.get("body") or rec
         data = body.get("data") or []
         embedding = data[0].get("embedding") if data else body.get("embedding")
         return custom_id, embedding
-
-    @staticmethod
-    def _raise_if_error(r: httpx.Response, action: str) -> None:
-        if r.status_code >= 400:
-            logger.warning(
-                "Mistral batch %s thất bại: HTTP %s %s", action, r.status_code, r.text[:300]
-            )
-            raise BatchError(
-                f"Mistral batch — {action} thất bại: HTTP {r.status_code}: {r.text[:200]}"
-            )
