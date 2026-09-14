@@ -8,11 +8,13 @@ openai SDK sync_embed sort lại data theo index; batch: format JSONL + map kế
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock
 
 import pytest
 
 from core.providers import PROVIDER_REGISTRY, get_adapter, get_provider
 from core.providers.base import BatchError, EmbeddingConfig, ModelPreset, ProviderSpec
+from core.providers.cohere import CohereAdapter
 from core.providers.jina import JinaAdapter
 from core.providers.mistral import MistralAdapter
 from core.providers.openai import OpenAIAdapter
@@ -33,8 +35,8 @@ def _cfg(provider="openai", model="text-embedding-3-small", dimension=1024, **kw
 # ---------- registry ----------
 
 
-def test_registry_has_five_providers():
-    assert set(PROVIDER_REGISTRY) == {"openai", "mistral", "jina", "ollama", "custom"}
+def test_registry_has_providers():
+    assert set(PROVIDER_REGISTRY) == {"openai", "mistral", "jina", "ollama", "cohere", "custom"}
 
 
 def test_unknown_provider_raises_no_fallback():
@@ -48,6 +50,7 @@ def test_batch_capability_flags():
     assert get_provider("openai").supports_batch
     assert get_provider("mistral").supports_batch
     assert get_provider("jina").supports_batch
+    assert get_provider("cohere").supports_batch
     assert not get_provider("ollama").supports_batch
     assert not get_provider("custom").supports_batch
 
@@ -267,3 +270,115 @@ def test_mistral_submit_over_limit_raises():
     )
     with pytest.raises(BatchError, match="vượt giới hạn"):
         adapter.submit_batch(object(), _cfg(provider="mistral"), [("a", "1"), ("b", "2")])
+
+
+# ---------- cohere provider ----------
+
+
+def test_cohere_empty_base_url_builds_client():
+    adapter = CohereAdapter()
+    cfg = _cfg(provider="cohere", base_url="", api_key="test-key")
+    client = adapter.build_client(cfg, timeout=30.0)
+    assert client is not None
+    assert getattr(client._client_wrapper, "_base_url", None) == "https://api.cohere.com"
+
+
+def test_cohere_sync_embed_chunks_over_96_texts():
+    adapter = CohereAdapter()
+    client = MagicMock()
+    # 150 texts -> 2 calls (96 + 54)
+    texts = [f"text-{i}" for i in range(150)]
+
+    def _mock_embed(texts, model, input_type, embedding_types):
+        res = MagicMock()
+        res.embeddings.float = [[float(j)] * 4 for j in range(len(texts))]
+        return res
+
+    client.embed.side_effect = _mock_embed
+    cfg = _cfg(provider="cohere", model="embed-multilingual-v3.0", dimension=4)
+
+    vectors = adapter.sync_embed(client, cfg, texts, "passage")
+    assert len(vectors) == 150
+    assert client.embed.call_count == 2
+    # Verify input_type is search_document for passage
+    assert client.embed.call_args_list[0].kwargs["input_type"] == "search_document"
+    assert client.embed.call_args_list[0].kwargs["embedding_types"] == ["float"]
+
+    # Verify query input_type is search_query
+    adapter.sync_embed(client, cfg, ["question"], "query")
+    assert client.embed.call_args_list[-1].kwargs["input_type"] == "search_query"
+
+
+def test_cohere_submit_batch_creates_dataset_and_job():
+    adapter = CohereAdapter()
+    client = MagicMock()
+    mock_ds = MagicMock(id="ds-123")
+    client.datasets.create.return_value = mock_ds
+    mock_ds_res = MagicMock()
+    mock_ds_res.dataset.validation_status = "validated"
+    client.datasets.get.return_value = mock_ds_res
+    client.embed_jobs.create.return_value = MagicMock(job_id="job-789")
+
+    cfg = _cfg(provider="cohere", model="embed-multilingual-v3.0", dimension=4)
+    encoded_id = adapter.submit_batch(client, cfg, [("c1", "text 1"), ("c2", "text 2")])
+
+    assert encoded_id == "ds-123:job-789"
+    assert client.datasets.create.call_count == 1
+    assert client.embed_jobs.create.call_args.kwargs["dataset_id"] == "ds-123"
+    assert client.embed_jobs.create.call_args.kwargs["model"] == "embed-multilingual-v3.0"
+
+
+def test_cohere_batch_status_maps_statuses():
+    adapter = CohereAdapter()
+    client = MagicMock()
+    cfg = _cfg(provider="cohere")
+
+    client.embed_jobs.get.return_value = MagicMock(status="processing")
+    s = adapter.batch_status(client, cfg, "ds-123:job-789")
+    assert s.state == "running"
+
+    client.embed_jobs.get.return_value = MagicMock(status="complete")
+    s = adapter.batch_status(client, cfg, "ds-123:job-789")
+    assert s.state == "completed"
+
+    client.embed_jobs.get.return_value = MagicMock(status="failed")
+    s = adapter.batch_status(client, cfg, "ds-123:job-789")
+    assert s.state == "failed"
+
+
+def test_cohere_fetch_batch_results_downloads_and_parses_jsonl(monkeypatch):
+    adapter = CohereAdapter()
+    client = MagicMock()
+    cfg = _cfg(provider="cohere", dimension=2)
+
+    client.embed_jobs.get.return_value = MagicMock(
+        status="complete", output_dataset_id="out-ds-456"
+    )
+    part_mock = MagicMock(url="https://fake-download.cohere.com/part1.jsonl")
+    ds_res_mock = MagicMock()
+    ds_res_mock.dataset.dataset_parts = [part_mock]
+    client.datasets.get.return_value = ds_res_mock
+
+    import io
+    import urllib.request
+
+    jsonl_bytes = (
+        b'{"custom_id": "c1", "embeddings": {"float": [0.1, 0.2]}}\n'
+        b'{"custom_id": "c2", "embeddings": {"float": [0.3, 0.4]}}\n'
+    )
+
+    class _MockResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(
+        urllib.request, "urlopen", lambda req, timeout=120.0: _MockResponse(jsonl_bytes)
+    )
+
+    results = adapter.fetch_batch_results(client, cfg, "ds-123:job-789")
+    assert set(results.by_id) == {"c1", "c2"}
+    assert results.by_id["c1"] == [0.1, 0.2]
+    assert results.by_id["c2"] == [0.3, 0.4]

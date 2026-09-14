@@ -261,8 +261,9 @@ def test_list_embedding_providers_endpoint(client):
     r = client.get("/embedding-integrations/providers")
     assert r.status_code == 200
     providers = {p["id"]: p for p in r.json()["providers"]}
-    assert set(providers) == {"openai", "mistral", "jina", "ollama", "custom"}
+    assert set(providers) == {"openai", "mistral", "jina", "ollama", "cohere", "custom"}
     assert providers["openai"]["supports_batch"] is True
+    assert providers["cohere"]["supports_batch"] is True
     assert providers["ollama"]["supports_batch"] is False
     small = next(m for m in providers["openai"]["models"] if m["name"] == "text-embedding-3-small")
     assert 1536 in small["dimensions"] and 256 in small["dimensions"]

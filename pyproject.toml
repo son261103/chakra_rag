@@ -22,6 +22,7 @@ dependencies = [
     "cryptography",
     "pgvector",
     "psycopg[binary]",
+    "cohere>=7.1.1",
 ]
 
 [tool.uv]

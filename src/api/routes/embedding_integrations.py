@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["embedding-integrations"])
 
-ProviderId = Literal["openai", "mistral", "jina", "ollama", "custom"]
+ProviderId = Literal["openai", "mistral", "jina", "ollama", "cohere", "custom"]
 
 
 def _conflict_http(exc: EmbeddingDimensionConflict) -> HTTPException:
@@ -64,7 +64,7 @@ class EmbeddingIntegrationResponseModel(BaseModel):
 class CreateEmbeddingIntegrationRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     provider: ProviderId = Field(default="custom")
-    base_url: str = Field(min_length=1)
+    base_url: str = Field(default="")
     model: str = Field(min_length=1)
     dimension: int = Field(gt=0, le=16384)
     api_key: str = Field(default="")
@@ -88,7 +88,7 @@ class UpdateEmbeddingIntegrationRequest(BaseModel):
 class TestEmbeddingIntegrationRequest(BaseModel):
     provider: ProviderId = Field(default="custom")
     model: str = Field(min_length=1)
-    base_url: str = Field(min_length=1)
+    base_url: str = Field(default="")
     dimension: int | None = Field(default=None, gt=0)
     api_key: str | None = None
     integration_id: str | None = None
@@ -104,6 +104,7 @@ class ProviderSpecModel(BaseModel):
     display_name: str
     default_base_url: str
     requires_api_key: bool
+    requires_base_url: bool = True
     supports_batch: bool
     batch_limit: int | None
     models: list[ProviderModelPresetModel]
@@ -137,12 +138,18 @@ def create_embedding_integration(
     req: CreateEmbeddingIntegrationRequest, service: Services
 ) -> dict[str, Any]:
     """Tạo cấu hình tích hợp embedding mới, mã hóa API key bằng DEK/KEK."""
+    from core.providers import get_provider
+    spec = get_provider(req.provider)
+    resolved_base_url = req.base_url.strip() or spec.default_base_url
+    if spec.requires_base_url and not resolved_base_url:
+        raise HTTPException(422, "Base URL không được để trống với provider này.")
+
     try:
         created = service.embedding_integrations.create_integration(
             name=req.name,
             model=req.model,
             dimension=req.dimension,
-            base_url=req.base_url,
+            base_url=resolved_base_url,
             provider=req.provider,
             api_key=req.api_key,
             use_batch=req.use_batch,
@@ -254,11 +261,17 @@ def test_embedding_integration(
     req: TestEmbeddingIntegrationRequest, service: Services
 ) -> dict[str, Any]:
     """Kiểm tra kết nối tới embedding provider — embed thử 1 text, trả chiều thực tế."""
+    from core.providers import get_provider
+    spec = get_provider(req.provider)
+    resolved_base_url = req.base_url.strip() or spec.default_base_url
+    if spec.requires_base_url and not resolved_base_url:
+        raise HTTPException(422, "Base URL không được để trống với provider này.")
+
     try:
         return service.embedding_integrations.test_connection(
             provider=req.provider,
             model=req.model,
-            base_url=req.base_url,
+            base_url=resolved_base_url,
             dimension=req.dimension,
             api_key=req.api_key,
             integration_id=req.integration_id,

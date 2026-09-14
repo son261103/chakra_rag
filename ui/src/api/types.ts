@@ -188,6 +188,7 @@ export interface EmbeddingProviderSpec {
   display_name: string;
   default_base_url: string;
   requires_api_key: boolean;
+  requires_base_url?: boolean;
   supports_batch: boolean;
   batch_limit: number | null;
   models: ProviderModelPreset[];

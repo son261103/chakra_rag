@@ -10,7 +10,8 @@ silent fallback của dự án).
 
 from __future__ import annotations
 
-from core.providers.base import ProviderSpec
+from core.providers.base import EmbeddingAdapter, ProviderSpec
+from core.providers.cohere import COHERE_SPEC, CohereAdapter
 from core.providers.jina import JINA_SPEC, JinaAdapter
 from core.providers.mistral import MISTRAL_SPEC, MistralAdapter
 from core.providers.ollama import OLLAMA_SPEC, OllamaAdapter
@@ -29,7 +30,7 @@ CUSTOM_SPEC = ProviderSpec(
 
 PROVIDER_REGISTRY: dict[str, ProviderSpec] = {
     spec.id: spec
-    for spec in (OPENAI_SPEC, MISTRAL_SPEC, JINA_SPEC, OLLAMA_SPEC, CUSTOM_SPEC)
+    for spec in (OPENAI_SPEC, MISTRAL_SPEC, JINA_SPEC, OLLAMA_SPEC, COHERE_SPEC, CUSTOM_SPEC)
 }
 
 
@@ -44,12 +45,11 @@ def get_provider(provider_id: str) -> ProviderSpec:
         ) from exc
 
 
-def get_adapter(provider_id: str) -> OpenAICompatAdapter:
+def get_adapter(provider_id: str) -> EmbeddingAdapter:
     """Adapter instance theo provider id.
 
-    Mọi adapter hiện kế thừa OpenAICompatAdapter (khác nhau ở `_model_kwargs`
-    + batch methods); provider mới không kế thừa nền này thì thêm nhánh
-    tường minh tại đây.
+    Adapter kế thừa OpenAICompatAdapter hoặc triển khai giao thức EmbeddingAdapter
+    (như CohereAdapter với official cohere SDK).
     """
     if provider_id == "openai":
         return OpenAIAdapter()
@@ -59,6 +59,8 @@ def get_adapter(provider_id: str) -> OpenAICompatAdapter:
         return JinaAdapter()
     if provider_id == "ollama":
         return OllamaAdapter()
+    if provider_id == "cohere":
+        return CohereAdapter()
     spec = get_provider(provider_id)
     adapter = OpenAICompatAdapter()
     adapter.spec = spec

@@ -116,7 +116,13 @@ class Embedder:
         except (KeyError, TypeError, ValueError):
             dimension = 0
         provider = (row.get("provider") or "").strip()
-        if not base_url or not model or dimension <= 0:
+        try:
+            spec = get_adapter(provider).spec if provider else None
+            needs_base_url = spec.requires_base_url if spec is not None else True
+        except ValueError:
+            needs_base_url = True
+
+        if (needs_base_url and not base_url) or not model or dimension <= 0:
             raise EmbeddingConfigError(
                 "Tích hợp embedding thiếu base_url/model/dimension — kiểm tra lại trong "
                 "Cài đặt (tab Embedding)."
@@ -177,8 +183,8 @@ class Embedder:
         """Embed một batch → ma trận float32 đã chuẩn hóa L2.
 
         `input_kind` phân biệt ngữ nghĩa query (khi tìm kiếm) và passage (khi
-        nạp tài liệu) — chỉ provider có tham số riêng (Jina `task`) dùng tới,
-        nhà khác bỏ qua. Validate chiều thực tế của API so với khai báo
+        nạp tài liệu) — chỉ provider có tham số riêng (Jina `task`, Cohere `input_type`)
+        dùng tới, nhà khác bỏ qua. Validate chiều thực tế của API so với khai báo
         `dimension` — lệch là raise sớm thay vì để pgvector báo lỗi khó hiểu
         lúc insert.
         """

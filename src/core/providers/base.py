@@ -49,7 +49,8 @@ class ProviderSpec:
     requires_api_key: bool
     supports_batch: bool
     batch_limit: int | None  # số item tối đa / batch job (None = không hỗ trợ batch)
-    models: tuple[ModelPreset, ...]
+    models: tuple[ModelPreset, ...] = ()
+    requires_base_url: bool = True
 
     def preset_for(self, model: str) -> ModelPreset | None:
         """Preset khớp tên model (so khớp chính xác); model lạ → None."""
@@ -62,6 +63,7 @@ class ProviderSpec:
             "display_name": self.display_name,
             "default_base_url": self.default_base_url,
             "requires_api_key": self.requires_api_key,
+            "requires_base_url": self.requires_base_url,
             "supports_batch": self.supports_batch,
             "batch_limit": self.batch_limit,
             "models": [
