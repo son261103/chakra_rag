@@ -22,7 +22,7 @@ Gotcha: embedding là **API** (không còn model local trong RAM). `tests/test_s
 Lint (CI-equivalent gate, run before finishing):
 
 ```bash
-uv run ruff check src tests scripts          # line-length 100, rules: E F I B UP
+uv run ruff check src tests evaluation       # line-length 100, rules: E F I B UP
 ```
 
 API + UI (two terminals):
@@ -33,7 +33,7 @@ cd ui && npm install && npm run dev          # :5173
 ```
 UI typecheck = `npm run build` (`tsc -b && vite build`); no eslint is configured.
 
-LangSmith eval export: `uv run python scripts/export_eval_dataset.py --project chakra_rag --dataset rag-prod-eval [--limit 200]`
+LangSmith eval export: `uv run python -m evaluation.export_dataset --project chakra_rag --dataset rag-prod-eval [--limit 200]`
 
 ## Configuration
 
@@ -54,7 +54,7 @@ LangSmith eval export: `uv run python scripts/export_eval_dataset.py --project c
 ## Structure
 
 - `src/` (flat layout, hatchling): `core/` (RAG domain: chunking, embedding (API client `Embedder`), retrieval+RRF, verification, security), `agent/` (LLM orchestration: `agent.py` LangGraph loop, `llm.py` reasoning pass-through, `tools/` — one file per tool, `@register_tool` registry; a new tool file imported in `agent/tools/__init__.py` is auto-wired via `build_tools`), `storage/` (PostgreSQL: `schema.py` = DDL bảng + index — nguồn sự thật duy nhất; `connection.py` = `Database` — SQLAlchemy engine (QueuePool, pgvector + tsvector), chạy schema lúc khởi tạo, **tự resolve số chiều vector từ `embedding_integrations` active** (DB mới chưa có integration → `cfg.embed_dim` từ env `EMBED_DIM` = chiều mặc định của DB, duy nhất biến embedding trong env; truy vấn KHÔNG nằm ở đây), `repositories/` (truy vấn theo domain bằng SQLAlchemy Core: `ChunkRepository` chunks với pgvector + tsvector + `vector_dimension()`/`migrate_dimension()`, `FileRepository` files, `ConversationRepository` conversations+messages, `IntegrationRepository` llm_integrations, `EmbeddingIntegrationRepository` embedding_integrations). Dependency direction: `agent → core`/`storage`/`repositories`, never the reverse.
-- `scripts/` is a package (`__init__.py`) — pytest `pythonpath=["."]` in `pyproject.toml` lets tests import it.
+- `evaluation/`: module đánh giá và công cụ dataset (`export_dataset.py`).
 - `data/`: `uploads/` = UI uploads (file gốc trên đĩa, cần cho reingest + inspector; xóa qua UI xóa cả DB + đĩa).
 
 ## Conventions

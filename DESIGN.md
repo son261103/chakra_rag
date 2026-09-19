@@ -266,7 +266,7 @@ Mục tiêu: demo trực quan khả năng **grounding & trích dẫn** và luồ
 
 **Quyết định cuối cùng**: dùng LangChain + LangGraph để code gọn; observability bằng **LangSmith** khi operator bật (env `LANGSMITH_TRACING`/`LANGSMITH_API_KEY`), mặc định chạy hoàn toàn local không gửi gì. Nguyên tắc xuyên suốt: framework lo phần cơ khí (vòng lặp tool-calling, parse message, prompt template, tracing), **nghiệp vụ chấm điểm phải tự viết** (hybrid retrieval, RRF, citation verifier) — đây là phần thể hiện năng lực và là thứ bị hỏi xoáy khi phỏng vấn.
 
-**Trade-off của LangSmith:** khi bật, trace/feedback được gửi lên SaaS ngoài (LangSmith) — chấp nhận được cho bài này và hữu ích để phân tích chất lượng; không bật thì không có gì rời khỏi máy. `scripts/export_eval_dataset.py` biến production runs thành dataset đánh giá.
+**Trade-off của LangSmith:** khi bật, trace/feedback được gửi lên SaaS ngoài (LangSmith) — chấp nhận được cho bài này và hữu ích để phân tích chất lượng; không bật thì không có gì rời khỏi máy. `evaluation/export_dataset.py` biến production runs thành dataset đánh giá.
 
 **Dùng gì của LangChain/LangGraph, và vì sao:**
 
@@ -383,4 +383,4 @@ Nguyên tắc: **phần lõi xong trước, UI làm sau cùng**. Nếu chậm ti
 - Support check nâng cấp: NLI model hoặc LLM-judge từng claim thay vì n-gram overlap.
 - Semantic chunking + chunk hierarchy (parent-document retrieval).
 - Agent đa tool: đã triển khai `search_docs` + `read_chunk` + `list_documents` (registry trong `agent/tools/`); có thể mở rộng tiếp `search_in_doc(doc, query)` bằng cách thêm file tool mới.
-- LangSmith: tracing + feedback scores đã tích hợp sẵn (bật qua `LANGSMITH_TRACING`/`LANGSMITH_API_KEY`); có thể mở rộng thêm eval dataset từ production traces (scripts/export_eval_dataset.py) và so sánh prompt tập trung khi làm việc theo team.
+- LangSmith: tracing + feedback scores đã tích hợp sẵn (bật qua `LANGSMITH_TRACING`/`LANGSMITH_API_KEY`); có thể mở rộng thêm eval dataset từ production traces (evaluation/export_dataset.py) và so sánh prompt tập trung khi làm việc theo team.

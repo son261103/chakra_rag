@@ -1,7 +1,7 @@
 """Xuất production traces thành dataset đánh giá trên LangSmith.
 
 Thay thế read_all() của telemetry cũ: dataset gốc giờ sống trên LangSmith.
-Usage: LANGSMITH_API_KEY=... uv run python scripts/export_eval_dataset.py \
+Usage: LANGSMITH_API_KEY=... uv run python -m evaluation.export_dataset \
     [--project chakra_rag] [--dataset rag-prod-eval] [--limit 200]
 """
 

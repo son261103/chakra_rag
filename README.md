@@ -141,7 +141,7 @@ câu hỏi
 
 **Framework boundary:** LangChain/LangGraph lo cơ chế (agent loop, tool schema, splitter). **Retrieval + RRF + citation verify là code tự viết** — phần thể hiện năng lực.
 
-**Observability (LangSmith):** bật bằng 3 biến môi trường `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY=...`, `LANGSMITH_PROJECT=chakra_rag` (xem `.env.example`). Khi bật, mỗi lần hỏi tạo một trace: vòng lặp agent + các span của tool `search_docs` và `Retriever.search`, kèm feedback scores `invalid_citations` / `unsupported_claims` / `low_confidence` trên root run. Production traces có thể xuất thành eval dataset bằng script `uv run python scripts/export_eval_dataset.py --project chakra_rag --dataset rag-prod-eval [--limit 200]`. Nếu không set `LANGSMITH_API_KEY`, mọi hook tracing/feedback là no-op — ứng dụng chạy hoàn toàn local, không gửi dữ liệu ra ngoài.
+**Observability (LangSmith):** bật bằng 3 biến môi trường `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY=...`, `LANGSMITH_PROJECT=chakra_rag` (xem `.env.example`). Khi bật, mỗi lần hỏi tạo một trace: vòng lặp agent + các span của tool `search_docs` và `Retriever.search`, kèm feedback scores `invalid_citations` / `unsupported_claims` / `low_confidence` trên root run. Production traces có thể xuất thành eval dataset bằng script `uv run python -m evaluation.export_dataset --project chakra_rag --dataset rag-prod-eval [--limit 200]`. Nếu không set `LANGSMITH_API_KEY`, mọi hook tracing/feedback là no-op — ứng dụng chạy hoàn toàn local, không gửi dữ liệu ra ngoài.
 
 Cấu trúc code (layered backend):
 
@@ -156,6 +156,7 @@ src/
   service/       # domain services (chat, conversation, file, integration) + container
   observability/ # langsmith tracing + timing helpers
   config.py      # cấu hình tập trung
+evaluation/      # đánh giá benchmark và dataset tooling (export_dataset.py)
 tests/
 ```
 
@@ -219,6 +220,7 @@ chakra_rag/
 │   ├── ingestion/            # worker ingest
 │   ├── service/              # domain services + container
 │   └── observability/        # LangSmith tracing
+├── evaluation/               # đánh giá offline & dataset tooling
 ├── tests/
 ├── data/
 │   └── uploads/              # file gốc do user upload qua UI
