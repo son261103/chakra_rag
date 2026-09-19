@@ -55,6 +55,52 @@ class ChatService:
         )
         return history
 
+    def _resolve_trace_context(self, top_k: int | None = None) -> tuple[dict[str, Any], list[str]]:
+        """Thu thập metadata & tags kỹ thuật (model, embedding, params) cho LangSmith trace."""
+        metadata: dict[str, Any] = {
+            "top_k": top_k or self.cfg.top_k,
+            "rrf_k": self.cfg.rrf_k,
+            "chunk_size": self.cfg.chunk_size,
+            "chunk_overlap": self.cfg.chunk_overlap,
+            "min_score": self.cfg.min_score,
+            "support_threshold": self.cfg.support_threshold,
+        }
+        tags: list[str] = []
+
+        if getattr(self.agent, "integration_repo", None):
+            try:
+                active_llm = self.agent.integration_repo.get_active_integration()
+                if active_llm:
+                    llm_model = active_llm.get("model")
+                    provider = active_llm.get("provider")
+                    if llm_model:
+                        metadata["llm_model"] = llm_model
+                        tags.append(f"llm:{llm_model}")
+                    if provider:
+                        metadata["llm_provider"] = provider
+            except Exception:
+                logger.debug("Không thể đọc active LLM integration cho trace metadata")
+
+        retriever = getattr(self.agent, "retriever", None)
+        embedder = getattr(retriever, "embedder", None)
+        if embedder and getattr(embedder, "integration_repo", None):
+            try:
+                active_emb = embedder.integration_repo.get_active_integration()
+                if active_emb:
+                    emb_model = active_emb.get("model")
+                    emb_provider = active_emb.get("provider")
+                    dim = active_emb.get("dimension")
+                    if emb_model:
+                        metadata["embedding_model"] = emb_model
+                        tags.append(f"emb:{emb_model}")
+                    if emb_provider:
+                        metadata["embedding_provider"] = emb_provider
+                    if dim:
+                        metadata["embedding_dim"] = dim
+            except Exception:
+                logger.debug("Không thể đọc active embedding integration cho trace metadata")
+
+        return metadata, tags
     def _build_payload(
         self,
         question: str,
@@ -105,7 +151,13 @@ class ChatService:
         """
         history = self._prepare_question(question, conversation_id, log_label="ask")
         t0 = timed()
-        agent_cfg = trace_metadata(conversation_id, streamed=False)
+        extra_meta, extra_tags = self._resolve_trace_context(top_k=top_k)
+        agent_cfg = trace_metadata(
+            conversation_id,
+            streamed=False,
+            extra_metadata=extra_meta,
+            extra_tags=extra_tags,
+        )
         agent_result: AgentResult = self.agent.ask_agent(
             question, history=history, config=agent_cfg, top_k=top_k
         )
@@ -145,7 +197,13 @@ class ChatService:
             question, conversation_id, log_label="ask_stream"
         )
         t0 = timed()
-        agent_cfg = trace_metadata(conversation_id, streamed=True)
+        extra_meta, extra_tags = self._resolve_trace_context(top_k=top_k)
+        agent_cfg = trace_metadata(
+            conversation_id,
+            streamed=True,
+            extra_metadata=extra_meta,
+            extra_tags=extra_tags,
+        )
         final: AgentResult | None = None
         for event in self.agent.stream_agent(question, history=history, config=agent_cfg):
             if event["type"] == "_final":

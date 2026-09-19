@@ -16,6 +16,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from langsmith import traceable
+
 # \w trong Python 3 là unicode-aware — match cả chunk_id chứa tiếng Việt có dấu.
 # Một cặp [] có thể chứa NHIỀU id phân tách bởi "," / ";" (model hay gộp nguồn
 # kiểu [a#s#0, b#s#1]); cụm có chữ tự do ("[xem doc#a#0]") không match —
@@ -75,6 +77,7 @@ def _split_claims(answer: str) -> list[str]:
     return [s.strip() for s in sentences if s.strip()]
 
 
+@traceable(name="verify_answer", run_type="chain")
 def verify_answer(
     answer: str,
     tool_returned: dict[str, dict[str, Any]],

@@ -24,6 +24,7 @@ from dataclasses import replace
 from typing import Any
 
 import numpy as np
+from langsmith import traceable
 
 from config import Config
 from core.providers import get_adapter
@@ -174,6 +175,7 @@ class Embedder:
 
     # ---------- embedding đồng bộ ----------
 
+    @traceable(name="embed_texts", run_type="embedding")
     def embed(
         self,
         texts: list[str],

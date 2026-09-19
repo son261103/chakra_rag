@@ -24,6 +24,8 @@ import traceback
 import unicodedata
 from pathlib import Path
 
+from langsmith import traceable
+
 from config import Config
 from core.chunking import Chunk, chunk_markdown, chunk_plain_text
 from core.embedding import Embedder, EmbeddingConfigError
@@ -435,6 +437,7 @@ class IngestWorker:
         # về 0 và đụng UNIQUE (plain text / PDF thường chung 1 section).
         return _assign_chunk_ids(chunks)
 
+    @traceable(name="ingest_document", run_type="chain")
     def _process_file(self, path: Path) -> None:
         fid = file_id_for(path)
         doc_name = path.name

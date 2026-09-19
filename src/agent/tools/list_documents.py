@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from langchain_core.tools import BaseTool, tool
+from langsmith import traceable
 
 from agent.tools.registry import ToolDeps, register_tool
 
@@ -15,6 +16,7 @@ def make_list_documents(deps: ToolDeps) -> BaseTool:
     files_repo = deps.file_repo
 
     @tool
+    @traceable(name="list_documents_tool")
     def list_documents() -> str:
         """Liệt kê các tài liệu đang có trong hệ thống (tên, trạng thái, số đoạn). Dùng khi cần biết index đang có gì, hoặc khi search không ra kết quả để trả lời chính xác là tài liệu không có thông tin."""  # noqa: E501
         if files_repo is None:

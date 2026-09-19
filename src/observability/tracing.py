@@ -53,16 +53,31 @@ def ls_client() -> Any | None:
         return None
 
 
-def trace_metadata(conversation_id: str | None, *, streamed: bool) -> dict[str, Any]:
+def trace_metadata(
+    conversation_id: str | None,
+    *,
+    streamed: bool,
+    extra_metadata: dict[str, Any] | None = None,
+    extra_tags: list[str] | None = None,
+) -> dict[str, Any]:
     """Config dict cho agent.invoke/stream: metadata + tags của cả trace."""
-    return {
-        "metadata": {
-            "conversation_id": conversation_id,
-            "streamed": streamed,
-        },
-        "tags": ["stream" if streamed else "sync"],
+    meta: dict[str, Any] = {
+        "conversation_id": conversation_id,
+        "streamed": streamed,
     }
+    if extra_metadata:
+        meta.update(extra_metadata)
 
+    tags = ["stream" if streamed else "sync"]
+    if extra_tags:
+        for tag in extra_tags:
+            if tag and tag not in tags:
+                tags.append(tag)
+
+    return {
+        "metadata": meta,
+        "tags": tags,
+    }
 
 def submit_feedback(key: str, score: float | int | bool, comment: str = "") -> None:
     """Ghi feedback score lên root run hiện tại (nếu đang trong một trace).

@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 
 from langchain_core.tools import BaseTool, tool
+from langsmith import traceable
 
 from agent.tools.registry import ToolDeps, register_tool
 
@@ -22,8 +23,8 @@ from agent.tools.registry import ToolDeps, register_tool
 def make_read_chunk(deps: ToolDeps) -> BaseTool:
     """Factory tool read_chunk: closure giữ chunk repo của container hiện tại."""
     chunks = deps.chunk_repo
-
     @tool
+    @traceable(name="read_chunk_tool")
     def read_chunk(chunk_id: str) -> str:
         """Đọc nội dung đầy đủ của một đoạn tài liệu theo chunk_id (id lấy từ kết quả search_docs), kèm các đoạn liền kề trước/sau trong cùng tài liệu để có ngữ cảnh."""  # noqa: E501
         if chunks is None:

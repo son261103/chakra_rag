@@ -80,3 +80,20 @@ def test_ask_stream_yields_done_with_payload(make_service):
     assert types[-1] == "done"
     done = collected[-1]
     assert done["answer"] == "trả lời [a1]"
+
+
+def test_ask_includes_rich_trace_metadata(make_service):
+    svc = make_service()
+    fake_result = FakeAgentResult()
+    with patch.object(svc.chat.agent, "ask_agent") as mock_ask:
+        mock_ask.return_value = fake_result
+        svc.chat.ask("câu hỏi test?", top_k=7)
+        mock_ask.assert_called_once()
+        config_passed = mock_ask.call_args.kwargs["config"]
+        assert "metadata" in config_passed
+        meta = config_passed["metadata"]
+        assert meta["top_k"] == 7
+        assert meta["streamed"] is False
+        assert "rrf_k" in meta
+        assert "chunk_size" in meta
+        assert "sync" in config_passed["tags"]
